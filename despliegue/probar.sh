@@ -271,14 +271,23 @@ comprobar "RADIUS: el intento no autorizado queda en el registro" "$([ -n "$S" ]
 
 # ---------------------------------------------------------------- registro de autenticaciones
 sleep 5
-api GET "/api/autenticaciones?buscar=$USUARIO_PRUEBA&limite=100"
+api GET "/api/autenticaciones?buscar=$USUARIO_PRUEBA&tamano=100"
 REG="$CUERPO"
-tiene() { [ "$(printf '%s' "$REG" | jq "[.[] | select($1)] | length")" -gt 0 ]; }
-comprobar "Registro: el login aceptado por PAP queda anotado con router, empresa y grupo"     "$(tiene '.resultado == "aceptado" and .metodo == "PAP" and .router == "prueba-automatica" and .empresa == "Empresa de prueba" and .grupo == "full" and .ip_origen == "127.0.0.1"'; echo $?)"     "$(printf '%s' "$REG" | jq -c '[.[] | select(.resultado == "aceptado" and .metodo == "PAP")][0]')"
+tiene() { [ "$(printf '%s' "$REG" | jq "[.autenticaciones[] | select($1)] | length")" -gt 0 ]; }
+comprobar "Registro: el login aceptado por PAP queda anotado con router, empresa y grupo"     "$(tiene '.resultado == "aceptado" and .metodo == "PAP" and .router == "prueba-automatica" and .empresa == "Empresa de prueba" and .grupo == "full" and .ip_origen == "127.0.0.1"'; echo $?)"     "$(printf '%s' "$REG" | jq -c '[.autenticaciones[] | select(.resultado == "aceptado" and .metodo == "PAP")][0]')"
 comprobar "Registro: el login aceptado por MS-CHAP queda anotado con su método"     "$(tiene '.resultado == "aceptado" and .metodo == "MS-CHAPv1"'; echo $?)"
-comprobar "Registro: el rechazo por contraseña incorrecta queda anotado con su motivo"     "$(tiene '.resultado == "rechazado" and .metodo == "PAP" and (.motivo | length) > 0'; echo $?)"     "$(printf '%s' "$REG" | jq -c '[.[] | select(.resultado == "rechazado")][0] | {resultado, metodo, motivo}')"
+comprobar "Registro: el rechazo por contraseña incorrecta queda anotado con su motivo"     "$(tiene '.resultado == "rechazado" and .metodo == "PAP" and (.motivo | length) > 0'; echo $?)"     "$(printf '%s' "$REG" | jq -c '[.autenticaciones[] | select(.resultado == "rechazado")][0] | {resultado, metodo, motivo}')"
 api GET "/api/autenticaciones?buscar=no-existe&resultado=rechazado"
-comprobar "Registro: el intento de un usuario inexistente queda anotado"     "$([ "$(printf '%s' "$CUERPO" | jq 'length')" -gt 0 ]; echo $?)"
+comprobar "Registro: el intento de un usuario inexistente queda anotado"     "$([ "$(printf '%s' "$CUERPO" | jq '.total')" -gt 0 ]; echo $?)"
+api GET "/api/autenticaciones?buscar=$USUARIO_PRUEBA&tamano=2&pagina=1"
+A1="$CUERPO"
+api GET "/api/autenticaciones?buscar=$USUARIO_PRUEBA&tamano=2&pagina=2"
+A2="$CUERPO"
+comprobar "Registro: la primera página trae 2 logins e indica el total y las páginas" \
+    "$(printf '%s' "$A1" | jq -e '(.autenticaciones | length) == 2 and .pagina == 1 and .total > 2 and .paginas == ((.total + 1) / 2 | floor)' >/dev/null; echo $?)" \
+    "$(printf '%s' "$A1" | jq -c '{total, pagina, paginas, tamano}')"
+comprobar "Registro: la segunda página continúa donde acaba la primera, sin repetir" \
+    "$(jq -n --argjson a "$A1" --argjson b "$A2" '($a.autenticaciones | map(.id) | min) > ($b.autenticaciones | map(.id) | max)' | grep -q true; echo $?)"
 comprobar "Registro: no guarda contraseñas ni secretos"     "$(docker exec "$RADIUS" cat /registro/auth.log | grep -q -e "$CLAVE" -e "$SECRETO" -e "$HASH_NT"; [ $? -ne 0 ]; echo $?)"
 
 docker exec "$RADIUS" chmod 000 /registro

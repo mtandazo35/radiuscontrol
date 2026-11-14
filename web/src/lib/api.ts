@@ -108,6 +108,14 @@ export interface RespuestaUsuario {
   clave_generada?: string;
 }
 
+export interface PaginaAutenticaciones {
+  autenticaciones: Autenticacion[];
+  total: number;
+  pagina: number;
+  paginas: number;
+  tamano: number;
+}
+
 export interface PaginaEventos {
   eventos: Evento[];
   total: number;

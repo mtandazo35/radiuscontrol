@@ -1,44 +1,52 @@
 import * as React from "react";
-import { Badge, Card, Input, Table, Td, Th } from "@/components/ui";
-import { api, type Autenticacion } from "@/lib/api";
+import { Badge, Card, Input, Paginacion, Table, Td, Th } from "@/components/ui";
+import { api, type PaginaAutenticaciones } from "@/lib/api";
 import { fecha } from "@/lib/utils";
 import { useApp } from "../contexto";
 
 export default function Autenticaciones() {
   const { avisarError } = useApp();
-  const [lista, setLista] = React.useState<Autenticacion[] | null>(null);
+  const [datos, setDatos] = React.useState<PaginaAutenticaciones | null>(null);
   const [resultado, setResultado] = React.useState("");
   const [buscar, setBuscar] = React.useState("");
+  const [pagina, setPagina] = React.useState(1);
+  const [tamano, setTamano] = React.useState(25);
+  const lista = datos?.autenticaciones;
 
   const cargar = React.useCallback(
     async (avisar: boolean) => {
       try {
-        const q = new URLSearchParams({ limite: "200" });
+        const q = new URLSearchParams({ pagina: String(pagina), tamano: String(tamano) });
         if (resultado) q.set("resultado", resultado);
         if (buscar.trim()) q.set("buscar", buscar.trim());
-        setLista(await api<Autenticacion[]>("GET", `/autenticaciones?${q}`));
+        const r = await api<PaginaAutenticaciones>("GET", `/autenticaciones?${q}`);
+        setDatos(r);
+        // El servidor corrige una página que ya no existe.
+        if (r.pagina !== pagina) setPagina(r.pagina);
       } catch (e) {
         if (avisar) avisarError(e);
       }
     },
-    [resultado, buscar, avisarError],
+    [resultado, buscar, pagina, tamano, avisarError],
   );
 
   React.useEffect(() => {
     const espera = window.setTimeout(() => cargar(true), 250);
-    const t = window.setInterval(() => cargar(false), 5000);
+    // Solo la primera página se refresca sola: en las demás, las filas se
+    // moverían bajo el cursor mientras se leen.
+    const t = pagina === 1 ? window.setInterval(() => cargar(false), 5000) : undefined;
     return () => {
       window.clearTimeout(espera);
-      window.clearInterval(t);
+      if (t !== undefined) window.clearInterval(t);
     };
-  }, [cargar]);
+  }, [cargar, pagina]);
 
   return (
     <div className="space-y-4">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Autenticaciones</h1>
         <p className="text-sm text-muted-foreground">
-          Cada intento de login que FreeRADIUS aceptó o rechazó, en hora de Ecuador. Se actualiza solo. Los paquetes de
+          Cada intento de login que FreeRADIUS aceptó o rechazó, en hora de Ecuador. La primera página se actualiza sola. Los paquetes de
           orígenes no autorizados o con secreto incorrecto no aparecen aquí: FreeRADIUS los descarta sin responder.
         </p>
       </div>
@@ -49,13 +57,19 @@ export default function Autenticaciones() {
           placeholder="Buscar usuario, router, empresa o IP"
           aria-label="Buscar"
           value={buscar}
-          onChange={(e) => setBuscar(e.target.value)}
+          onChange={(e) => {
+            setBuscar(e.target.value);
+            setPagina(1);
+          }}
         />
         <select
           aria-label="Resultado"
           className="h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           value={resultado}
-          onChange={(e) => setResultado(e.target.value)}
+          onChange={(e) => {
+            setResultado(e.target.value);
+            setPagina(1);
+          }}
         >
           <option value="">Todos los resultados</option>
           <option value="aceptado">Aceptados</option>
@@ -114,6 +128,17 @@ export default function Autenticaciones() {
             ))}
           </tbody>
         </Table>
+        <Paginacion
+          pagina={datos?.pagina ?? 1}
+          paginas={datos?.paginas ?? 1}
+          total={datos?.total ?? 0}
+          tamano={tamano}
+          onPagina={setPagina}
+          onTamano={(t) => {
+            setTamano(t);
+            setPagina(1);
+          }}
+        />
       </Card>
     </div>
   );

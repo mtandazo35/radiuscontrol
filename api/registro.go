@@ -196,23 +196,42 @@ func (a *App) bucleRegistro(ctx context.Context) {
 
 func (a *App) listarAutenticaciones(w http.ResponseWriter, r *http.Request, _ *Operador) error {
 	q := r.URL.Query()
-	limite, _ := strconv.Atoi(q.Get("limite"))
-	if limite <= 0 || limite > 500 {
-		limite = 100
+	tamano, _ := strconv.Atoi(q.Get("tamano"))
+	if tamano <= 0 || tamano > 100 {
+		tamano = 25
+	}
+	pagina, _ := strconv.Atoi(q.Get("pagina"))
+	if pagina < 1 {
+		pagina = 1
 	}
 	resultado := q.Get("resultado")
 	if resultado != "" && resultado != "aceptado" && resultado != "rechazado" {
 		return malo("Filtro de resultado no válido.")
 	}
 	buscar := strings.TrimSpace(q.Get("buscar"))
+	const filtro = `($1 = '' OR resultado = $1)
+		AND ($2 = '' OR usuario ILIKE '%' || $2 || '%' OR router_nombre ILIKE '%' || $2 || '%'
+		     OR empresa_nombre ILIKE '%' || $2 || '%' OR ip_origen LIKE $2 || '%')`
 
-	filas, err := a.db.Query(r.Context(), `SELECT id, fecha, resultado, usuario, ip_origen, router_id,
+	ctx := r.Context()
+	var total int
+	if err := a.db.QueryRow(ctx, `SELECT count(*) FROM autenticaciones WHERE `+filtro, resultado, buscar).
+		Scan(&total); err != nil {
+		return err
+	}
+	paginas := (total + tamano - 1) / tamano
+	if paginas < 1 {
+		paginas = 1
+	}
+	// Una página más allá del final se corrige a la última.
+	if pagina > paginas {
+		pagina = paginas
+	}
+
+	filas, err := a.db.Query(ctx, `SELECT id, fecha, resultado, usuario, ip_origen, router_id,
 		router_nombre, empresa_nombre, nas_identifier, nas_ip, origen, metodo, grupo, motivo
-		FROM autenticaciones
-		WHERE ($1 = '' OR resultado = $1)
-		  AND ($2 = '' OR usuario ILIKE '%' || $2 || '%' OR router_nombre ILIKE '%' || $2 || '%'
-		       OR empresa_nombre ILIKE '%' || $2 || '%' OR ip_origen LIKE $2 || '%')
-		ORDER BY id DESC LIMIT $3`, resultado, buscar, limite)
+		FROM autenticaciones WHERE `+filtro+` ORDER BY id DESC LIMIT $3 OFFSET $4`,
+		resultado, buscar, tamano, (pagina-1)*tamano)
 	if err != nil {
 		return err
 	}
@@ -229,6 +248,8 @@ func (a *App) listarAutenticaciones(w http.ResponseWriter, r *http.Request, _ *O
 	if err := filas.Err(); err != nil {
 		return err
 	}
-	escribirJSON(w, http.StatusOK, lista)
+	escribirJSON(w, http.StatusOK, map[string]any{
+		"autenticaciones": lista, "total": total, "pagina": pagina, "paginas": paginas, "tamano": tamano,
+	})
 	return nil
 }

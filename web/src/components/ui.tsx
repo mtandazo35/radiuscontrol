@@ -145,3 +145,58 @@ export function DialogContent({
 export function DialogFooter({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return <div className={cn("flex flex-col-reverse gap-2 sm:flex-row sm:justify-end", className)} {...props} />;
 }
+
+export function Paginacion({
+  pagina,
+  paginas,
+  total,
+  tamano,
+  onPagina,
+  onTamano,
+}: {
+  pagina: number;
+  paginas: number;
+  total: number;
+  tamano: number;
+  onPagina: (p: number) => void;
+  onTamano: (t: number) => void;
+}) {
+  const desde = total > 0 ? (pagina - 1) * tamano + 1 : 0;
+  const hasta = Math.min(pagina * tamano, total);
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 text-sm">
+      <span className="text-muted-foreground" aria-live="polite">
+        {total > 0 ? `${desde}–${hasta} de ${total}` : "Sin resultados"}
+      </span>
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="flex items-center gap-2 text-muted-foreground">
+          Por página
+          <select
+            className="h-9 w-20 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            value={tamano}
+            onChange={(e) => onTamano(Number(e.target.value))}
+          >
+            <option value={25}>25</option>
+            <option value={50}>50</option>
+            <option value={100}>100</option>
+          </select>
+        </label>
+        <Button size="sm" variant="outline" disabled={pagina <= 1} onClick={() => onPagina(1)}>
+          Primera
+        </Button>
+        <Button size="sm" variant="outline" disabled={pagina <= 1} onClick={() => onPagina(pagina - 1)}>
+          Anterior
+        </Button>
+        <span className="whitespace-nowrap px-1">
+          Página {pagina} de {paginas}
+        </span>
+        <Button size="sm" variant="outline" disabled={pagina >= paginas} onClick={() => onPagina(pagina + 1)}>
+          Siguiente
+        </Button>
+        <Button size="sm" variant="outline" disabled={pagina >= paginas} onClick={() => onPagina(paginas)}>
+          Última
+        </Button>
+      </div>
+    </div>
+  );
+}

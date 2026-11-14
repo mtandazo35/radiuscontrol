@@ -1,7 +1,7 @@
 import { Plus, UserCog } from "lucide-react";
 import QRCode from "qrcode";
 import * as React from "react";
-import { Badge, Button, Card, Dialog, DialogContent, DialogFooter, Input, Label, Table, Td, Th } from "@/components/ui";
+import { Badge, Button, Card, Dialog, DialogContent, DialogFooter, Input, Label, Paginacion, Table, Td, Th } from "@/components/ui";
 import { api, type OperadorDetalle, type PaginaEventos, type Sesion } from "@/lib/api";
 import { fecha } from "@/lib/utils";
 import { useApp } from "../contexto";
@@ -529,9 +529,6 @@ function Actividad() {
     return () => window.clearTimeout(t);
   }, [buscar, pagina, tamano, avisarError]);
 
-  const desde = datos && datos.total > 0 ? (datos.pagina - 1) * datos.tamano + 1 : 0;
-  const hasta = datos ? Math.min(datos.pagina * datos.tamano, datos.total) : 0;
-
   return (
     <Seccion
       titulo="Registro de actividad"
@@ -586,43 +583,17 @@ function Actividad() {
         </tbody>
       </Table>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 text-sm">
-        <span className="text-muted-foreground" aria-live="polite">
-          {datos && datos.total > 0 ? `${desde}–${hasta} de ${datos.total}` : "Sin resultados"}
-        </span>
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="flex items-center gap-2 text-muted-foreground">
-            Por página
-            <select
-              className={selector + " w-20"}
-              value={tamano}
-              onChange={(e) => {
-                setTamano(Number(e.target.value));
-                setPagina(1);
-              }}
-            >
-              <option value={25}>25</option>
-              <option value={50}>50</option>
-              <option value={100}>100</option>
-            </select>
-          </label>
-          <Button size="sm" variant="outline" disabled={!datos || datos.pagina <= 1} onClick={() => setPagina(1)}>
-            Primera
-          </Button>
-          <Button size="sm" variant="outline" disabled={!datos || datos.pagina <= 1} onClick={() => setPagina(pagina - 1)}>
-            Anterior
-          </Button>
-          <span className="whitespace-nowrap px-1">
-            Página {datos?.pagina ?? 1} de {datos?.paginas ?? 1}
-          </span>
-          <Button size="sm" variant="outline" disabled={!datos || datos.pagina >= datos.paginas} onClick={() => setPagina(pagina + 1)}>
-            Siguiente
-          </Button>
-          <Button size="sm" variant="outline" disabled={!datos || datos.pagina >= datos.paginas} onClick={() => setPagina(datos!.paginas)}>
-            Última
-          </Button>
-        </div>
-      </div>
+      <Paginacion
+        pagina={datos?.pagina ?? 1}
+        paginas={datos?.paginas ?? 1}
+        total={datos?.total ?? 0}
+        tamano={tamano}
+        onPagina={setPagina}
+        onTamano={(t) => {
+          setTamano(t);
+          setPagina(1);
+        }}
+      />
     </Seccion>
   );
 }
