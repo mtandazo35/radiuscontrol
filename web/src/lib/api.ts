@@ -134,6 +134,7 @@ export interface Actualizacion {
     buscado: string;
     error: string;
   } | null;
+  pedido: boolean;
   proceso: {
     estado: "en-curso" | "ok" | "revertida" | "fallida";
     paso: string;

@@ -28,9 +28,13 @@ func leerCrudo(ruta string) json.RawMessage {
 }
 
 func (a *App) verActualizacion(w http.ResponseWriter, r *http.Request, _ *Operador) error {
+	// Entre que se pide y que el agente empieza pasan unos segundos: el panel
+	// debe tratarlo ya como una actualización en marcha.
+	_, err := os.Stat(a.archivoEstado("actualizar-pedido.json"))
 	escribirJSON(w, http.StatusOK, map[string]any{
 		"busqueda": leerCrudo(a.archivoEstado("actualizacion.json")),
 		"proceso":  leerCrudo(a.archivoEstado("actualizacion-proceso.json")),
+		"pedido":   err == nil,
 	})
 	return nil
 }

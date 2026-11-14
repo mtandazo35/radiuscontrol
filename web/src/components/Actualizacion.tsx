@@ -22,6 +22,8 @@ export function useActualizacion() {
   return c;
 }
 
+const PASOS = ["descargar", "respaldo", "construir", "instalar", "comprobar"];
+
 const nombrePaso: Record<string, string> = {
   descargar: "Descargar la versión nueva",
   respaldo: "Hacer y verificar el respaldo",
@@ -34,16 +36,23 @@ export function versionCorta(commit: string | undefined) {
   return commit ? commit.slice(0, 7) : "—";
 }
 
+// Una actualización lanzada desde esta ventana. «inicioPrevio» es el inicio del
+// proceso que había antes de pedirla: mientras el agente no publique uno
+// distinto, lo que se lee es el resultado de una actualización anterior.
+interface Lanzada {
+  commit: string;
+  inicioPrevio: string;
+}
+
 export function ProveedorActualizacion({ children }: { children: React.ReactNode }) {
   const { operador, avisarError } = useApp();
   const admin = operador?.rol === "administrador";
   const [datos, setDatos] = React.useState<Actualizacion | null>(null);
   const [abierto, setAbierto] = React.useState(false);
   const [buscando, setBuscando] = React.useState(false);
+  const [pidiendo, setPidiendo] = React.useState(false);
   const [sinRespuesta, setSinRespuesta] = React.useState(false);
-  // Se recuerda que esta ventana lanzó la actualización para seguir mostrando
-  // el avance aunque el panel deje de responder mientras se reinicia.
-  const [lanzada, setLanzada] = React.useState(false);
+  const [lanzada, setLanzada] = React.useState<Lanzada | null>(null);
 
   const cargar = React.useCallback(async () => {
     try {
@@ -54,23 +63,21 @@ export function ProveedorActualizacion({ children }: { children: React.ReactNode
     }
   }, []);
 
-  const enCurso = datos?.proceso?.estado === "en-curso";
-  const siguiendo = enCurso || lanzada;
+  const b = datos?.busqueda;
+  const p = datos?.proceso;
+  // El proceso que se lee, ¿es ya el de la actualización lanzada desde aquí?
+  const procesoPropio = lanzada !== null && p != null && p.inicio !== lanzada.inicioPrevio && p.a === lanzada.commit;
+  const terminada = procesoPropio && p!.estado !== "en-curso";
+  // En marcha: lo dice el agente, hay un pedido esperando, o se lanzó desde
+  // aquí y todavía no ha terminado.
+  const enMarcha = p?.estado === "en-curso" || datos?.pedido === true || (lanzada !== null && !terminada);
 
   React.useEffect(() => {
     if (!admin) return;
     cargar();
-    const t = window.setInterval(cargar, siguiendo ? 2000 : 60000);
+    const t = window.setInterval(cargar, enMarcha ? 2000 : 60000);
     return () => window.clearInterval(t);
-  }, [admin, cargar, siguiendo]);
-
-  // La actualización lanzada desde aquí ha terminado cuando el agente lo dice.
-  React.useEffect(() => {
-    if (lanzada && datos?.proceso && datos.proceso.estado !== "en-curso" && datos.proceso.fin) {
-      const fin = new Date(datos.proceso.fin).getTime();
-      if (Date.now() - fin < 600000) setLanzada(false);
-    }
-  }, [lanzada, datos]);
+  }, [admin, cargar, enMarcha]);
 
   const buscar = async () => {
     setBuscando(true);
@@ -92,45 +99,59 @@ export function ProveedorActualizacion({ children }: { children: React.ReactNode
   };
 
   const actualizar = async () => {
-    const ultimo = datos?.busqueda?.ultimo;
-    if (!ultimo) return;
+    const ultimo = b?.ultimo;
+    if (!ultimo || pidiendo) return;
+    setPidiendo(true);
     try {
       await api("POST", "/actualizacion/aplicar", { commit: ultimo });
-      setLanzada(true);
-      await cargar();
+      setLanzada({ commit: ultimo, inicioPrevio: p?.inicio ?? "" });
     } catch (e) {
       avisarError(e);
+      await cargar();
+    } finally {
+      setPidiendo(false);
     }
   };
 
-  const b = datos?.busqueda;
-  const p = datos?.proceso;
-  const pendientes = b?.cambios.length ?? 0;
-  const mostrarAvance = siguiendo || (p && p.estado !== "en-curso" && p.a === b?.instalado && pendientes === 0 && abierto && lanzada);
-  const terminado = p && p.estado !== "en-curso" && !lanzada && p.fin && Date.now() - new Date(p.fin).getTime() < 600000;
+  const cerrar = () => {
+    setAbierto(false);
+    // Visto el resultado, la ventana vuelve a su estado normal.
+    if (terminada) setLanzada(null);
+  };
+
+  const pendientes = enMarcha || terminada ? 0 : (b?.cambios.length ?? 0);
 
   const valor = React.useMemo<Contexto>(
-    () => ({ datos, pendientes, enCurso: Boolean(siguiendo), buscando, buscar, abrir: () => setAbierto(true) }),
+    () => ({ datos, pendientes, enCurso: enMarcha, buscando, buscar, abrir: () => setAbierto(true) }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [datos, pendientes, siguiendo, buscando],
+    [datos, pendientes, enMarcha, buscando],
   );
 
-  const pasoActual = p ? p.pasos.indexOf(p.paso) : -1;
+  // Qué proceso se pinta en la vista de avance: el propio si ya existe, el del
+  // agente si hay una actualización en curso lanzada desde otro sitio, o
+  // ninguno todavía (todo pendiente).
+  const pv = procesoPropio || (lanzada === null && p?.estado === "en-curso") ? p! : null;
+  const pasoActual = pv ? PASOS.indexOf(pv.paso) : -1;
+  const vistaAvance = enMarcha || terminada;
 
   return (
     <Ctx.Provider value={valor}>
       {children}
-      <Dialog open={abierto} onOpenChange={(a) => !a && setAbierto(false)}>
-        {mostrarAvance || (terminado && pendientes === 0) ? (
+      <Dialog open={abierto} onOpenChange={(a) => !a && cerrar()}>
+        {vistaAvance ? (
           <DialogContent
-            titulo={siguiendo ? "Actualizando RadiusControl" : p?.estado === "ok" ? "Actualización terminada" : "La actualización no se completó"}
-            descripcion={p ? `De la versión ${versionCorta(p.de)} a la ${versionCorta(p.a)}, pedida por ${p.quien}.` : undefined}
+            titulo={!terminada ? "Actualizando RadiusControl" : pv?.estado === "ok" ? "Actualización terminada" : "La actualización no se completó"}
+            descripcion={
+              pv
+                ? `De la versión ${versionCorta(pv.de)} a la ${versionCorta(pv.a)}, pedida por ${pv.quien}.`
+                : "El servidor está empezando la actualización."
+            }
           >
             <ol className="space-y-2">
-              {(p?.pasos ?? Object.keys(nombrePaso)).map((paso, i) => {
-                const hecho = p ? (p.estado === "ok" ? true : i < pasoActual) : false;
-                const actual = p ? i === pasoActual && p.estado === "en-curso" : i === 0;
-                const fallo = p ? i === pasoActual && (p.estado === "fallida" || p.estado === "revertida") : false;
+              {PASOS.map((paso, i) => {
+                const hecho = pv ? pv.estado === "ok" || i < pasoActual : false;
+                const actual = pv ? i === pasoActual && pv.estado === "en-curso" : false;
+                const fallo = pv ? i === pasoActual && (pv.estado === "fallida" || pv.estado === "revertida") : false;
                 return (
                   <li key={paso} className="flex items-center gap-3 text-sm">
                     {hecho ? (
@@ -143,31 +164,32 @@ export function ProveedorActualizacion({ children }: { children: React.ReactNode
                       <CircleDashed className="size-4 text-muted-foreground" />
                     )}
                     <span className={cn(!hecho && !actual && !fallo && "text-muted-foreground", fallo && "text-destructive")}>
-                      {nombrePaso[paso] ?? paso}
+                      {nombrePaso[paso]}
                     </span>
                   </li>
                 );
               })}
             </ol>
-            {siguiendo && sinRespuesta && (
+            {!terminada && sinRespuesta && (
               <p className="rounded-md border border-warning/50 p-3 text-sm text-warning" role="status">
                 El panel se está reiniciando. Esta ventana seguirá el avance sola en cuanto vuelva a responder.
               </p>
             )}
-            {siguiendo && !sinRespuesta && (
+            {!terminada && !sinRespuesta && (
               <p className="text-sm text-muted-foreground">
-                Tarda unos minutos. FreeRADIUS sigue autenticando mientras tanto, salvo un par de segundos al reiniciarse.
+                Puede tardar unos minutos. FreeRADIUS sigue autenticando mientras tanto, salvo un par de segundos si
+                tiene que reiniciarse.
               </p>
             )}
-            {!siguiendo && p?.mensaje && (
-              <p className={cn("rounded-md border p-3 text-sm", p.estado === "ok" ? "border-success/40" : "border-destructive/50")}>{p.mensaje}</p>
+            {terminada && pv?.mensaje && (
+              <p className={cn("rounded-md border p-3 text-sm", pv.estado === "ok" ? "border-success/40" : "border-destructive/50")}>{pv.mensaje}</p>
             )}
             <DialogFooter>
-              {!siguiendo && p?.estado === "ok" ? (
+              {terminada && pv?.estado === "ok" ? (
                 <Button onClick={() => window.location.reload()}>Recargar el panel</Button>
               ) : (
-                <Button variant="outline" onClick={() => setAbierto(false)}>
-                  {siguiendo ? "Ocultar" : "Cerrar"}
+                <Button variant="outline" onClick={cerrar}>
+                  {terminada ? "Cerrar" : "Ocultar"}
                 </Button>
               )}
             </DialogFooter>
@@ -201,11 +223,13 @@ export function ProveedorActualizacion({ children }: { children: React.ReactNode
               </>
             )}
             <DialogFooter>
-              <Button variant="outline" onClick={() => setAbierto(false)}>
+              <Button variant="outline" onClick={cerrar}>
                 Cerrar
               </Button>
               {pendientes > 0 ? (
-                <Button onClick={actualizar}>Actualizar ahora</Button>
+                <Button onClick={actualizar} disabled={pidiendo}>
+                  {pidiendo ? "Pidiendo…" : "Actualizar ahora"}
+                </Button>
               ) : (
                 <Button onClick={buscar} disabled={buscando}>
                   {buscando ? "Buscando…" : "Buscar actualizaciones"}
