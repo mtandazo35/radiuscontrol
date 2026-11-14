@@ -9,9 +9,16 @@ export class ErrorApi extends Error {
   }
 }
 
+let ultimaActividad = Date.now();
+
+export function momentoUltimaActividad() {
+  return ultimaActividad;
+}
+
 // auto: la petición la lanza el panel por su cuenta (un refresco periódico) y
 // no debe contar como actividad de la persona.
 export async function api<T>(metodo: string, ruta: string, cuerpo?: unknown, opciones?: { auto?: boolean }): Promise<T> {
+  if (!opciones?.auto) ultimaActividad = Date.now();
   let respuesta: Response;
   try {
     respuesta = await fetch(`/api${ruta}`, {
@@ -46,6 +53,8 @@ export interface Operador {
   usuario: string;
   rol: string;
   totp: boolean;
+  expira: string;
+  minutos_inactividad: number;
 }
 
 export interface OperadorDetalle {

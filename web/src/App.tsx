@@ -1,6 +1,7 @@
-import { ListChecks, Lock, LogOut, Moon, Router as IconoRouter, Settings2, ShieldCheck, Sun, Users } from "lucide-react";
+import { ListChecks, Lock, Moon, Router as IconoRouter, Settings2, ShieldCheck, Sun, Users } from "lucide-react";
 import * as React from "react";
 import { Navigate, NavLink, Route, Routes } from "react-router-dom";
+import { MenuUsuario } from "@/components/MenuUsuario";
 import { Badge, Button } from "@/components/ui";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -73,20 +74,12 @@ function BotonAplicar() {
 }
 
 function Marco({ children }: { children: React.ReactNode }) {
-  const { operador, setOperador } = useApp();
   const [oscuro, setOscuro] = React.useState(document.documentElement.classList.contains("dark"));
   const cambiarTema = () => {
     const nuevo = !oscuro;
     document.documentElement.classList.toggle("dark", nuevo);
     localStorage.setItem("rc-tema", nuevo ? "oscuro" : "claro");
     setOscuro(nuevo);
-  };
-  const salir = async () => {
-    try {
-      await api("DELETE", "/sesion");
-    } finally {
-      setOperador(null);
-    }
   };
   return (
     <div className="min-h-screen md:flex">
@@ -119,13 +112,10 @@ function Marco({ children }: { children: React.ReactNode }) {
             <IndicadorEstado />
             <BotonAplicar />
           </div>
-          <span className="text-sm text-muted-foreground">{operador?.usuario}</span>
           <Button variant="ghost" size="icon" onClick={cambiarTema} aria-label="Cambiar tema" title="Cambiar tema">
             {oscuro ? <Sun /> : <Moon />}
           </Button>
-          <Button variant="ghost" size="icon" onClick={salir} aria-label="Cerrar sesión" title="Cerrar sesión">
-            <LogOut />
-          </Button>
+          <MenuUsuario />
         </header>
         <main className="mx-auto max-w-6xl p-4 md:p-6">{children}</main>
       </div>

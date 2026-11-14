@@ -27,6 +27,9 @@ type Operador struct {
 	Usuario  string `json:"usuario"`
 	Rol      string `json:"rol"`
 	TOTP     bool   `json:"totp"`
+	// Para la cuenta atrás del panel.
+	Expira            time.Time `json:"expira"`
+	MinutosInactivo   int       `json:"minutos_inactividad"`
 }
 
 type errHTTP struct {
@@ -160,12 +163,12 @@ func (a *App) operadorDeSesion(r *http.Request) (*Operador, error) {
 	var op Operador
 	var inactiva bool
 	err = a.db.QueryRow(ctx, `
-		SELECT o.id, s.id, o.usuario, o.rol, o.totp_cifrado IS NOT NULL,
+		SELECT o.id, s.id, o.usuario, o.rol, o.totp_cifrado IS NOT NULL, s.expira,
 		       s.ultima_actividad < now() - $2::interval
 		FROM sesiones s JOIN operadores o ON o.id = s.operador_id
 		WHERE s.token_hash = $1 AND s.expira > now() AND o.activo`,
 		hashToken(c.Value), inactividadMax.String()).
-		Scan(&op.ID, &op.SesionID, &op.Usuario, &op.Rol, &op.TOTP, &inactiva)
+		Scan(&op.ID, &op.SesionID, &op.Usuario, &op.Rol, &op.TOTP, &op.Expira, &inactiva)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, sinSesion
 	}
@@ -186,6 +189,7 @@ func (a *App) operadorDeSesion(r *http.Request) (*Operador, error) {
 			return nil, err
 		}
 	}
+	op.MinutosInactivo = int(inactividadMax.Minutes())
 	return &op, nil
 }
 
@@ -352,7 +356,8 @@ func (a *App) iniciarSesion(w http.ResponseWriter, r *http.Request) error {
 		HttpOnly: true, Secure: true, SameSite: http.SameSiteStrictMode,
 	})
 	a.auditar(ctx, usuario, ip, "sesion.iniciada", "operador", map[string]any{"doble_factor": totpCifrado != nil})
-	escribirJSON(w, http.StatusOK, Operador{Usuario: usuario, Rol: rol, TOTP: totpCifrado != nil})
+	escribirJSON(w, http.StatusOK, Operador{Usuario: usuario, Rol: rol, TOTP: totpCifrado != nil,
+		Expira: expira, MinutosInactivo: int(inactividadMax.Minutes())})
 	return nil
 }
 
