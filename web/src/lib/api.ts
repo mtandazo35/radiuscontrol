@@ -120,4 +120,12 @@ export interface Estado {
     sha_authorize: string;
     desde: string;
   } | null;
+  firewall: {
+    estado: string;
+    version: string;
+    ufw_activo: boolean;
+    redes: string[];
+    desde: string;
+  } | null;
+  firewall_al_dia: boolean;
 }

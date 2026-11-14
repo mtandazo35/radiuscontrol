@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
@@ -205,6 +206,22 @@ func (a *App) validar(ctx context.Context, c *Compilado) (string, error) {
 	return texto, nil
 }
 
+var reIpaddr = regexp.MustCompile(`(?m)^\tipaddr = (\S+)$`)
+
+// listaRedes extrae las redes de origen del clients.conf compilado. Sale del
+// mismo archivo que carga FreeRADIUS, así que el firewall abre exactamente lo
+// que FreeRADIUS acepta. La última línea marca que la lista está completa.
+func listaRedes(clients []byte) []byte {
+	var b bytes.Buffer
+	b.WriteString("# Generado por RadiusControl. Redes con acceso a 1812/udp.\n")
+	for _, m := range reIpaddr.FindAllSubmatch(clients, -1) {
+		b.Write(m[1])
+		b.WriteByte('\n')
+	}
+	b.WriteString("# fin\n")
+	return b.Bytes()
+}
+
 // activar deja la versión en el volumen compartido y cambia el enlace «actual»
 // de forma atómica. El contenedor de FreeRADIUS detecta el cambio y se recarga.
 func (a *App) activar(id int64, c *Compilado) error {
@@ -218,6 +235,10 @@ func (a *App) activar(id int64, c *Compilado) error {
 		return err
 	}
 	if err := os.WriteFile(filepath.Join(dir, "authorize"), c.Authorize, 0o640); err != nil {
+		return err
+	}
+	// Lista de redes para el agente de firewall del servidor.
+	if err := os.WriteFile(filepath.Join(dir, "redes.txt"), listaRedes(c.Clients), 0o644); err != nil {
 		return err
 	}
 	tmp := filepath.Join(a.cfg.DirCompilado, "actual.tmp")
@@ -266,7 +287,9 @@ func (a *App) descifrarVersion(ctx context.Context, id int64) (*Compilado, error
 // restaurarCompilado vuelve a escribir la versión activa si el volumen
 // compartido está vacío, por ejemplo tras recrearlo.
 func (a *App) restaurarCompilado(ctx context.Context) error {
-	if _, err := os.Stat(filepath.Join(a.cfg.DirCompilado, "actual", "clients.conf")); err == nil {
+	// Se mira la lista de redes porque es el último archivo que se escribe: si
+	// está, la versión en disco está completa.
+	if _, err := os.Stat(filepath.Join(a.cfg.DirCompilado, "actual", "redes.txt")); err == nil {
 		return nil
 	}
 	var id int64
@@ -426,6 +449,15 @@ type Cargado struct {
 	Desde        string `json:"desde"`
 }
 
+// Firewall es lo que el agente del servidor declara tener abierto en UFW.
+type Firewall struct {
+	Estado    string   `json:"estado"`
+	Version   string   `json:"version"`
+	UFWActivo bool     `json:"ufw_activo"`
+	Redes     []string `json:"redes"`
+	Desde     string   `json:"desde"`
+}
+
 func (a *App) verEstado(w http.ResponseWriter, r *http.Request, _ *Operador) error {
 	ctx := r.Context()
 	deseado, err := a.compilarDeseado(ctx)
@@ -448,6 +480,16 @@ func (a *App) verEstado(w http.ResponseWriter, r *http.Request, _ *Operador) err
 		}
 	}
 
+	var firewall *Firewall
+	if b, err := os.ReadFile(filepath.Join(a.cfg.DirCompilado, "estado", "firewall.json")); err == nil {
+		var f Firewall
+		if json.Unmarshal(b, &f) == nil {
+			firewall = &f
+		}
+	}
+	firewallAlDia := activa != nil && firewall != nil && firewall.Estado == "sincronizado" &&
+		firewall.UFWActivo && firewall.Version == strconv.FormatInt(activa.ID, 10)
+
 	pendiente := activa == nil ||
 		activa.ShaClients != deseado.ShaClients || activa.ShaAuthorize != deseado.ShaAuthorize
 	sincronizado := activa != nil && cargado != nil && cargado.Estado == "en-marcha" &&
@@ -462,6 +504,8 @@ func (a *App) verEstado(w http.ResponseWriter, r *http.Request, _ *Operador) err
 		},
 		"activa":     activa,
 		"freeradius": cargado,
+		"firewall":           firewall,
+		"firewall_al_dia":    firewallAlDia,
 	})
 	return nil
 }

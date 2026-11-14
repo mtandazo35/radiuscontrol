@@ -23,6 +23,7 @@ function IndicadorEstado() {
   if (!estado) return <Badge variant="muted">Sin datos</Badge>;
   if (estado.cambios_pendientes) return <Badge variant="warning">Cambios sin aplicar</Badge>;
   if (!estado.sincronizado) return <Badge variant="destructive">FreeRADIUS no sincronizado</Badge>;
+  if (!estado.firewall_al_dia) return <Badge variant="destructive">Firewall sin sincronizar</Badge>;
   return <Badge variant="success">Aplicado y en marcha</Badge>;
 }
 

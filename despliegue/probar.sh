@@ -184,6 +184,26 @@ aplicar
 comprobar "Aplicar: FreeRADIUS carga la versión nueva y las huellas coinciden" "$?" \
     "$(printf '%s' "$CUERPO" | jq -c '{cambios_pendientes, sincronizado, activa: .activa.id, freeradius}')"
 
+regla_fw() { ufw show added | grep -q -x "ufw allow from 127.0.0.1 to any port 1812 proto udp comment 'radiuscontrol'"; }
+esperar_fw() { # <0: debe existir | 1: no debe existir>
+    for _ in $(seq 1 20); do
+        regla_fw
+        [ $? -eq "$1" ] && return 0
+        sleep 1
+    done
+    return 1
+}
+OTRAS_REGLAS="$(ufw show added | grep -v "comment 'radiuscontrol'")"
+esperar_fw 0
+comprobar "Firewall: al aplicar, se abre 1812/udp para la red del router" "$?" "$(ufw show added | grep "'radiuscontrol'")"
+for _ in $(seq 1 15); do
+    api GET /api/estado
+    [ "$(printf '%s' "$CUERPO" | jq -r .firewall_al_dia)" = "true" ] && break
+    sleep 1
+done
+comprobar "Firewall: el panel ve el firewall al día con la versión aplicada" \
+    "$([ "$(printf '%s' "$CUERPO" | jq -r .firewall_al_dia)" = "true" ]; echo $?)" "$(printf '%s' "$CUERPO" | jq -c .firewall)"
+
 S="$(radius 127.0.0.1 /tmp/secreto "$PAP_OK")"
 comprobar "RADIUS: PAP con la contraseña correcta, acepta" "$(printf '%s' "$S" | grep -q 'Received Access-Accept'; echo $?)"
 comprobar "RADIUS: PAP devuelve el grupo full" "$(printf '%s' "$S" | grep -q 'Mikrotik-Group = "full"'; echo $?)" "$S"
@@ -311,6 +331,10 @@ comprobar "Vuelta atrás: el panel avisa de que lo aplicado difiere de lo desead
 api PUT "/api/routers/$ROUTER_ID" "$(jq -n --arg n "$ROUTER_PRUEBA" '{nombre:$n,empresa:"Empresa de prueba",redes:["127.0.0.1"],activo:false}')"
 aplicar
 S="$(radius 127.0.0.1 /tmp/secreto-raro "$PAP_OK")"
+esperar_fw 1
+comprobar "Firewall: al suspender el router, su regla de 1812/udp se retira" "$?"
+comprobar "Firewall: las demás reglas del servidor no cambian" \
+    "$([ "$(ufw show added | grep -v "comment 'radiuscontrol'")" = "$OTRAS_REGLAS" ]; echo $?)"
 comprobar "Suspensión: un router suspendido deja de recibir respuesta" "$(printf '%s' "$S" | grep -q 'Received'; [ $? -ne 0 ]; echo $?)"
 
 # ---------------------------------------------------------------- limpieza

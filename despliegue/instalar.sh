@@ -76,12 +76,25 @@ sleep 4
 docker compose ps
 
 echo "== 6. Firewall"
-if [ -n "${RED_GESTION:-}" ]; then
+if command -v ufw >/dev/null 2>&1; then
     mkdir -p /root/backups
     tar czf "/root/backups/ufw-antes-radiuscontrol-$(date +%Y%m%d-%H%M%S).tar.gz" /etc/ufw 2>/dev/null
-    ufw allow from "$RED_GESTION" to any port 443 proto tcp comment 'Panel RadiusControl'
+    if [ -n "${RED_GESTION:-}" ]; then
+        ufw allow from "$RED_GESTION" to any port 443 proto tcp comment 'Panel RadiusControl'
+    else
+        echo "sin RED_GESTION: no se cambia el acceso al panel"
+    fi
+    # Agente que abre 1812/udp solo a las redes de los routers aplicados.
+    install -m 0755 "$DIR/firewall/radiuscontrol-firewall.sh" /usr/local/sbin/radiuscontrol-firewall.sh
+    install -m 0644 "$DIR/firewall/radiuscontrol-firewall.service" /etc/systemd/system/radiuscontrol-firewall.service
+    systemctl daemon-reload
+    systemctl enable radiuscontrol-firewall.service >/dev/null 2>&1
+    systemctl restart radiuscontrol-firewall.service
+    sleep 4
+    systemctl is-active radiuscontrol-firewall.service
+    ufw status | grep -E '1812|Status'
 else
-    echo "sin RED_GESTION: no se toca el firewall"
+    echo "UFW no está instalado: el agente de firewall no se instala"
 fi
 
 echo

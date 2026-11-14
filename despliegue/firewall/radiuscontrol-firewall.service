@@ -1,0 +1,13 @@
+[Unit]
+Description=RadiusControl: mantiene en UFW las redes de los routers autorizados
+After=docker.service ufw.service
+Wants=docker.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/radiuscontrol-firewall.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -19,6 +19,12 @@ const textoFreeradius: Record<string, string> = {
   error: "Detenido por un error",
 };
 
+const textoFirewall: Record<string, string> = {
+  sincronizado: "Al día",
+  "sin-configuracion": "Esperando la primera configuración",
+  error: "No pudo aplicar alguna regla",
+};
+
 export default function Configuracion() {
   const { estado, refrescarEstado, avisar, avisarError, confirmar } = useApp();
   const [versiones, setVersiones] = React.useState<Version[] | null>(null);
@@ -53,6 +59,7 @@ export default function Configuracion() {
   };
 
   const fr = estado?.freeradius;
+  const fw = estado?.firewall;
   const activa = estado?.activa;
 
   return (
@@ -60,11 +67,11 @@ export default function Configuracion() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Configuración</h1>
         <p className="text-sm text-muted-foreground">
-          Lo que el panel tiene guardado, lo que se aplicó y lo que FreeRADIUS declara tener cargado.
+          Lo que el panel tiene guardado, lo que se aplicó, lo que FreeRADIUS declara tener cargado y lo que el firewall deja pasar.
         </p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Card className="p-4">
           <h2 className="mb-3 text-sm font-semibold">Deseado (panel)</h2>
           <dl className="space-y-3">
@@ -106,6 +113,35 @@ export default function Configuracion() {
             </Dato>
             <Dato titulo="Situación">
               {estado?.sincronizado ? (
+                <Badge variant="success">Coincide con lo aplicado</Badge>
+              ) : (
+                <Badge variant="destructive">No coincide con lo aplicado</Badge>
+              )}
+            </Dato>
+          </dl>
+        </Card>
+
+        <Card className="p-4">
+          <h2 className="mb-3 text-sm font-semibold">Firewall del servidor</h2>
+          <dl className="space-y-3">
+            <Dato titulo="Estado">
+              {!fw ? "Sin datos del agente" : !fw.ufw_activo ? "UFW está desactivado" : (textoFirewall[fw.estado] ?? fw.estado)}
+            </Dato>
+            <Dato titulo="Redes con acceso a 1812/udp">
+              {fw && fw.redes.length > 0 ? (
+                <span className="font-mono text-xs">
+                  {fw.redes.map((red) => (
+                    <span key={red} className="block">
+                      {red}
+                    </span>
+                  ))}
+                </span>
+              ) : (
+                "Ninguna"
+              )}
+            </Dato>
+            <Dato titulo="Situación">
+              {estado?.firewall_al_dia ? (
                 <Badge variant="success">Coincide con lo aplicado</Badge>
               ) : (
                 <Badge variant="destructive">No coincide con lo aplicado</Badge>

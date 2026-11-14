@@ -203,6 +203,21 @@ func TestRenderizarEsDeterminista(t *testing.T) {
 	}
 }
 
+func TestListaRedes(t *testing.T) {
+	c := renderizar([]clienteComp{
+		{RouterID: 1, RedID: 1, Red: "192.0.2.10/32", Secreto: "ipaddr = 203.0.113.9"},
+		{RouterID: 2, RedID: 2, Red: "2001:db8::/64", Secreto: "x"},
+	}, nil)
+	got := string(listaRedes(c.Clients))
+	want := "# Generado por RadiusControl. Redes con acceso a 1812/udp.\n192.0.2.10/32\n2001:db8::/64\n# fin\n"
+	if got != want {
+		t.Fatalf("lista de redes inesperada:\n%s", got)
+	}
+	if vacia := string(listaRedes(renderizar(nil, nil).Clients)); !strings.HasSuffix(vacia, "# fin\n") || strings.Count(vacia, "\n") != 2 {
+		t.Fatalf("la lista vacía debe llevar solo la cabecera y el final:\n%s", vacia)
+	}
+}
+
 func TestRenderizarEscapaElSecreto(t *testing.T) {
 	c := renderizar([]clienteComp{{RouterID: 1, RedID: 1, Red: "192.0.2.1/32", Secreto: `a'b\c${d}`}}, nil)
 	if !strings.Contains(string(c.Clients), `secret = 'a\'b\c${d}'`) {

@@ -48,7 +48,7 @@ export default function Routers() {
     avisar({
       titulo,
       mensaje:
-        "Este secreto se muestra una sola vez. Pega estas líneas en el terminal del router, aplica los cambios en el panel y abre el puerto RADIUS en el firewall del servidor (botón «Firewall» del router).",
+        "Este secreto se muestra una sola vez. Pega estas líneas en el terminal del router, y aplica los cambios en el panel: al aplicar, el firewall del servidor se abre solo para las redes de este router.",
       copiable: r.script_rsc,
     });
   };
@@ -113,15 +113,6 @@ export default function Routers() {
     }
   };
 
-  const firewall = (r: Router) => {
-    avisar({
-      titulo: `Firewall para «${r.nombre}»`,
-      mensaje:
-        "FreeRADIUS solo recibe los paquetes de este router si el firewall del servidor deja pasar su dirección de origen al puerto 1812/udp. Ejecuta esto en el servidor de RadiusControl:",
-      copiable: r.redes.map((red) => `ufw allow from ${red} to any port 1812 proto udp comment 'RADIUS ${r.nombre}'`).join("\n"),
-    });
-  };
-
   const borrar = async (r: Router) => {
     const ok = await confirmar("Eliminar el router", `«${r.nombre}» dejará de autenticar cuando apliques los cambios.`, "Eliminar", true);
     if (!ok) return;
@@ -139,7 +130,7 @@ export default function Routers() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Routers</h1>
           <p className="text-sm text-muted-foreground">
-            Cada router se identifica por la dirección de origen de sus paquetes y tiene su propio secreto.
+            Cada router se identifica por la dirección de origen de sus paquetes y tiene su propio secreto. El firewall del servidor solo deja pasar al puerto RADIUS las redes de los routers activos.
           </p>
         </div>
         <Button onClick={() => setForm(vacio)}>
@@ -205,9 +196,6 @@ export default function Routers() {
                       }
                     >
                       Editar
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => firewall(r)}>
-                      Firewall
                     </Button>
                     <Button size="sm" variant="outline" onClick={() => rotar(r)}>
                       Rotar secreto
