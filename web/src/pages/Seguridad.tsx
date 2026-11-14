@@ -2,7 +2,7 @@ import { Plus, UserCog } from "lucide-react";
 import QRCode from "qrcode";
 import * as React from "react";
 import { Badge, Button, Card, Dialog, DialogContent, DialogFooter, Input, Label, Paginacion, Table, Td, Th } from "@/components/ui";
-import { api, type OperadorDetalle, type PaginaEventos, type Sesion } from "@/lib/api";
+import { api, type Bloqueos, type OperadorDetalle, type PaginaEventos, type Sesion } from "@/lib/api";
 import { fecha } from "@/lib/utils";
 import { useApp } from "../contexto";
 
@@ -26,6 +26,9 @@ const nombreAccion: Record<string, string> = {
   "operador.clave_restablecida": "Contraseña de operador restablecida",
   "operador.desbloqueado": "Operador desbloqueado",
   "operador.doble_factor_retirado": "Doble factor retirado a un operador",
+  "operador.acceso_de_emergencia": "Acceso de emergencia desde el servidor",
+  "ip.bloqueada": "Dirección IP bloqueada por intentos fallidos",
+  "ip.desbloqueada": "Dirección IP desbloqueada",
   "router.creado": "Router creado",
   "router.editado": "Router editado",
   "router.eliminado": "Router eliminado",
@@ -506,6 +509,80 @@ function Sesiones() {
   );
 }
 
+function DireccionesBloqueadas() {
+  const { avisarError } = useApp();
+  const [datos, setDatos] = React.useState<Bloqueos | null>(null);
+
+  const cargar = React.useCallback(async () => {
+    try {
+      setDatos(await api<Bloqueos>("GET", "/bloqueos"));
+    } catch (e) {
+      avisarError(e);
+    }
+  }, [avisarError]);
+
+  React.useEffect(() => {
+    cargar();
+    const t = window.setInterval(cargar, 15000);
+    return () => window.clearInterval(t);
+  }, [cargar]);
+
+  const desbloquear = async (ip: string) => {
+    try {
+      await api("POST", "/bloqueos/desbloquear", { ip });
+      await cargar();
+    } catch (e) {
+      avisarError(e);
+    }
+  };
+
+  const regla = datos?.regla;
+  return (
+    <Seccion
+      titulo="Direcciones bloqueadas"
+      descripcion={
+        regla
+          ? `Una dirección IP que falla el inicio de sesión ${regla.intentos} veces en ${regla.ventana_minutos} minutos queda bloqueada ${regla.bloqueo_minutos} minutos: el intento siguiente ya no se atiende, sea cual sea la cuenta. Las sesiones ya abiertas no se ven afectadas.`
+          : "Direcciones IP con el inicio de sesión bloqueado por intentos fallidos."
+      }
+    >
+      <Table>
+        <thead>
+          <tr>
+            <Th>Dirección IP</Th>
+            <Th>Intentos fallidos</Th>
+            <Th>Bloqueada desde</Th>
+            <Th>Hasta</Th>
+            <Th className="text-right">Acciones</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {datos?.bloqueos.length === 0 && (
+            <tr>
+              <Td colSpan={5} className="py-8 text-center text-muted-foreground">
+                No hay ninguna dirección bloqueada.
+              </Td>
+            </tr>
+          )}
+          {datos?.bloqueos.map((b) => (
+            <tr key={b.ip}>
+              <Td className="font-mono text-xs">{b.ip}</Td>
+              <Td>{b.intentos}</Td>
+              <Td className="whitespace-nowrap text-muted-foreground">{fecha(b.desde)}</Td>
+              <Td className="whitespace-nowrap text-muted-foreground">{fecha(b.hasta)}</Td>
+              <Td className="text-right">
+                <Button size="sm" variant="outline" onClick={() => desbloquear(b.ip)}>
+                  Desbloquear
+                </Button>
+              </Td>
+            </tr>
+          ))}
+        </tbody>
+      </Table>
+    </Seccion>
+  );
+}
+
 function Actividad() {
   const { avisarError } = useApp();
   const [datos, setDatos] = React.useState<PaginaEventos | null>(null);
@@ -569,7 +646,7 @@ function Actividad() {
               <Td className="whitespace-nowrap text-muted-foreground">{fecha(e.fecha)}</Td>
               <Td className="font-medium">{e.operador}</Td>
               <Td>
-                {e.accion === "sesion.fallida" || e.accion === "config.rechazada" ? (
+                {e.accion === "sesion.fallida" || e.accion === "config.rechazada" || e.accion === "ip.bloqueada" ? (
                   <span className="text-destructive">{nombreAccion[e.accion]}</span>
                 ) : (
                   (nombreAccion[e.accion] ?? e.accion)
@@ -611,6 +688,7 @@ export default function Seguridad() {
       </div>
       {admin ? <Operadores /> : <TarjetaMiCuenta />}
       <Sesiones />
+      {admin && <DireccionesBloqueadas />}
       {admin && <Actividad />}
     </div>
   );

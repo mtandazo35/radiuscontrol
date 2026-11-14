@@ -221,15 +221,57 @@ func (a *App) crearOperadorInicial(ctx context.Context) error {
 //	radiuscontrol operador-emergencia <usuario>
 //
 // Crea esa cuenta como administrador, o la recupera si ya existe: contraseña
-// nueva, sin bloqueo, sin doble factor y con las sesiones cerradas. Sirve para
-// volver a entrar cuando se ha perdido el acceso. Solo puede ejecutarla quien
-// ya tiene acceso de administrador al servidor.
+// nueva, sin bloqueo, sin doble factor y con las sesiones cerradas.
+//
+//	radiuscontrol desbloquear-ip <dirección | todas>
+//
+// Levanta el bloqueo de inicio de sesión de una dirección, o de todas.
+//
+// Sirven para volver a entrar cuando se ha perdido el acceso. Solo puede
+// ejecutarlas quien ya tiene acceso de administrador al servidor.
 func (a *App) comando(ctx context.Context, args []string) int {
-	if len(args) != 2 || args[0] != "operador-emergencia" {
+	uso := func() int {
 		fmt.Fprintln(os.Stderr, "uso: radiuscontrol operador-emergencia <usuario>")
+		fmt.Fprintln(os.Stderr, "     radiuscontrol desbloquear-ip <dirección | todas>")
 		return 2
 	}
-	usuario := args[1]
+	if len(args) != 2 {
+		return uso()
+	}
+	switch args[0] {
+	case "operador-emergencia":
+		return a.comandoOperador(ctx, args[1])
+	case "desbloquear-ip":
+		return a.comandoDesbloquear(ctx, args[1])
+	}
+	return uso()
+}
+
+func (a *App) comandoDesbloquear(ctx context.Context, ip string) int {
+	if ip == "todas" {
+		if _, err := a.db.Exec(ctx, `DELETE FROM bloqueos_ip; DELETE FROM intentos_ip`); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		a.auditar(ctx, "consola del servidor", "local", "ip.desbloqueada", "todas", nil)
+		fmt.Println("todas las direcciones desbloqueadas")
+		return 0
+	}
+	hecho, err := a.quitarBloqueo(ctx, ip)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	if hecho {
+		a.auditar(ctx, "consola del servidor", "local", "ip.desbloqueada", ip, nil)
+		fmt.Println("dirección desbloqueada")
+	} else {
+		fmt.Println("esa dirección no estaba bloqueada")
+	}
+	return 0
+}
+
+func (a *App) comandoOperador(ctx context.Context, usuario string) int {
 	if !reUsuario.MatchString(usuario) {
 		fmt.Fprintln(os.Stderr, "nombre de usuario no válido")
 		return 2
@@ -309,5 +351,7 @@ func (a *App) rutas() http.Handler {
 	m.HandleFunc("POST /api/operadores/{id}/desbloquear", a.admin(a.desbloquearOperador))
 	m.HandleFunc("DELETE /api/operadores/{id}/totp", a.admin(a.quitarTOTPOperador))
 	m.HandleFunc("GET /api/auditoria", a.admin(a.listarAuditoria))
+	m.HandleFunc("GET /api/bloqueos", a.admin(a.listarBloqueos))
+	m.HandleFunc("POST /api/bloqueos/desbloquear", a.admin(a.desbloquearIP))
 	return m
 }

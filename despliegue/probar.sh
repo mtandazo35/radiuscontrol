@@ -16,7 +16,11 @@ EVIDENCIA="$DIR/evidencias/evidencia-$(date +%Y%m%d-%H%M%S).txt"
 # Las pruebas usan una cuenta de administrador propia, creada por la consola
 # del servidor, para no depender de la contraseña de ninguna persona.
 ADMIN_PRUEBA="admin-prueba-automatica"
+IP_PRUEBA="192.0.2.200"
+IP_ATACANTE="198.51.100.77"
 ADMIN_CLAVE="$(docker exec radiuscontrol-api radiuscontrol operador-emergencia "$ADMIN_PRUEBA" | tail -n 1)"
+docker exec radiuscontrol-api radiuscontrol desbloquear-ip "$IP_PRUEBA" >/dev/null
+docker exec radiuscontrol-api radiuscontrol desbloquear-ip "$IP_ATACANTE" >/dev/null
 if [ "${#ADMIN_CLAVE}" -lt 12 ]; then
     echo "No se pudo crear la cuenta de pruebas." >&2
     exit 1
@@ -37,11 +41,12 @@ totp() {
     printf '%06d' $(( valor % 1000000 ))
 }
 
-# entrar <usuario> <clave> [código]: deja el código HTTP en CODIGO y la sesión en SESION
+# entrar <usuario> <clave> [código] [dirección]: deja el código HTTP en CODIGO y la sesión en SESION
 entrar() {
     local cabeceras
     cabeceras="$(mktemp)"
     CUERPO="$(curl -sS -m 30 -D "$cabeceras" -X POST "$API/api/sesion" -H 'X-RC: 1' -H 'Content-Type: application/json' \
+        -H "X-Forwarded-For: ${4:-$IP_PRUEBA}" \
         --data "$(jq -n --arg u "$1" --arg c "$2" --arg k "${3:-}" '{usuario:$u,clave:$c,codigo:$k}')")"
     CODIGO="$(awk 'NR == 1 {print $2}' "$cabeceras")"
     SESION="$(awk -F'[=;]' 'tolower($1) ~ /^set-cookie: rc_sesion/ {print $2}' "$cabeceras" | tr -d '\r')"
@@ -81,7 +86,7 @@ anotar() { printf '%s\n' "$*" | enmascarar | tee -a "$EVIDENCIA"; }
 # api <método> <ruta> [cuerpo]  ->  deja el código en CODIGO y el cuerpo en CUERPO
 api() {
     local salida
-    salida="$(curl -sS -m 90 -X "$1" "$API$2" -H 'X-RC: 1' -H 'Content-Type: application/json' \
+    salida="$(curl -sS -m 90 -X "$1" "$API$2" -H 'X-RC: 1' -H 'Content-Type: application/json' -H "X-Forwarded-For: $IP_PRUEBA" \
         ${COOKIE:+-H "Cookie: rc_sesion=$COOKIE"} ${3:+--data "$3"} -w '\n%{http_code}' 2>&1)"
     CODIGO="${salida##*$'\n'}"
     CUERPO="${salida%$'\n'*}"
@@ -150,7 +155,7 @@ comprobar "Panel: contraseña incorrecta, 401" "$(codigo_es 401; echo $?)" "$CUE
 api GET /api/routers
 comprobar "Panel: sin sesión no se puede consultar, 401" "$(codigo_es 401; echo $?)"
 
-COOKIE="$(curl -sS -m 30 -D - -o /dev/null -X POST "$API/api/sesion" -H 'X-RC: 1' \
+COOKIE="$(curl -sS -m 30 -D - -o /dev/null -X POST "$API/api/sesion" -H 'X-RC: 1' -H "X-Forwarded-For: $IP_PRUEBA" \
     -H 'Content-Type: application/json' \
     --data "$(jq -n --arg u "$ADMIN_PRUEBA" --arg c "$ADMIN_CLAVE" '{usuario:$u,clave:$c}')" \
     | awk -F'[=;]' 'tolower($1) ~ /^set-cookie: rc_sesion/ {print $2}' | tr -d '\r')"
@@ -452,6 +457,55 @@ comprobar "Actividad: quedan anotados el alta, los accesos fallidos y el doble f
 comprobar "Actividad: el registro no contiene contraseñas ni el secreto del doble factor" \
     "$(printf '%s' "$CUERPO" | grep -q -e "$OP_CLAVE" -e "$OP_CLAVE2" -e "$TOTP_SECRETO"; [ $? -ne 0 ]; echo $?)"
 
+# ---------------------------------------------------------------- bloqueo por dirección IP
+for n in 1 2 3; do
+    entrar "$ADMIN_PRUEBA" "equivocada-$n" "" "$IP_ATACANTE"
+done
+comprobar "Bloqueo por IP: los tres primeros intentos fallidos responden 401" "$([ "$CODIGO" = 401 ]; echo $?)"
+entrar "usuario-que-no-existe" "equivocada-4" "" "$IP_ATACANTE"
+comprobar "Bloqueo por IP: el cuarto intento fallido también responde 401, aunque sea con otra cuenta" "$([ "$CODIGO" = 401 ]; echo $?)"
+entrar "$ADMIN_PRUEBA" "$ADMIN_CLAVE" "" "$IP_ATACANTE"
+comprobar "Bloqueo por IP: el quinto intento se bloquea aunque la contraseña sea correcta, 429" \
+    "$([ "$CODIGO" = 429 ] && [ -z "$SESION" ]; echo $?)" "$CUERPO"
+entrar "$ADMIN_PRUEBA" "$ADMIN_CLAVE"
+comprobar "Bloqueo por IP: desde otra dirección la misma cuenta sigue entrando, 200" "$([ "$CODIGO" = 200 ] && [ -n "$SESION" ]; echo $?)"
+OCULTAR+=("$SESION")
+api GET /api/bloqueos
+comprobar "Bloqueo por IP: el panel lista la dirección bloqueada" \
+    "$(printf '%s' "$CUERPO" | jq -e --arg ip "$IP_ATACANTE" 'any(.bloqueos[]; .ip == $ip and .intentos == 4)' >/dev/null; echo $?)" \
+    "$(printf '%s' "$CUERPO" | jq -c '.regla')"
+api GET /api/routers
+comprobar "Bloqueo por IP: una sesión ya abierta no se ve afectada" "$(codigo_es 200; echo $?)"
+api GET "/api/auditoria?buscar=ip.bloqueada&tamano=5"
+comprobar "Bloqueo por IP: el bloqueo queda en el registro de actividad" \
+    "$(printf '%s' "$CUERPO" | jq -e --arg ip "$IP_ATACANTE" 'any(.eventos[]; .accion == "ip.bloqueada" and .objeto == $ip)' >/dev/null; echo $?)"
+api POST /api/bloqueos/desbloquear "$(jq -n --arg ip "$IP_ATACANTE" '{ip:$ip}')"
+comprobar "Bloqueo por IP: un administrador puede desbloquear la dirección, 200" "$(codigo_es 200; echo $?)"
+entrar "$ADMIN_PRUEBA" "$ADMIN_CLAVE" "" "$IP_ATACANTE"
+comprobar "Bloqueo por IP: tras desbloquear, esa dirección vuelve a entrar, 200" "$([ "$CODIGO" = 200 ]; echo $?)"
+OCULTAR+=("$SESION")
+
+# Tres fallos y un acierto: el acierto pone el contador a cero.
+for n in 1 2 3; do
+    entrar "$ADMIN_PRUEBA" "equivocada-$n" "" "$IP_ATACANTE"
+done
+entrar "$ADMIN_PRUEBA" "$ADMIN_CLAVE" "" "$IP_ATACANTE"
+OCULTAR+=("$SESION")
+for n in 1 2 3; do
+    entrar "$ADMIN_PRUEBA" "equivocada-$n" "" "$IP_ATACANTE"
+done
+comprobar "Bloqueo por IP: un acceso correcto pone a cero los fallos anteriores" "$([ "$CODIGO" = 401 ]; echo $?)"
+docker exec radiuscontrol-api radiuscontrol desbloquear-ip "$IP_ATACANTE" >/dev/null
+
+# Por el camino real (el proxy web) no se puede fingir otra dirección.
+curl -sk -m 30 -o /dev/null -X POST "https://$IP_PUBLICA/api/sesion" -H 'X-RC: 1' -H 'Content-Type: application/json' \
+    -H 'X-Forwarded-For: 203.0.113.99' --data '{"usuario":"prueba-direccion-fingida","clave":"x"}'
+api GET "/api/auditoria?buscar=prueba-direccion-fingida&tamano=5"
+comprobar "Bloqueo por IP: la dirección que anota el panel es la real, no la que declara el visitante" \
+    "$(printf '%s' "$CUERPO" | jq -e --arg ip "$IP_PUBLICA" '(.eventos | length) > 0 and all(.eventos[]; .ip == $ip)' >/dev/null; echo $?)" \
+    "$(printf '%s' "$CUERPO" | jq -c '[.eventos[] | {ip, accion}][0]')"
+docker exec radiuscontrol-api radiuscontrol desbloquear-ip "$IP_PUBLICA" >/dev/null
+
 api GET "/api/auditoria?tamano=5&pagina=1"
 P1="$CUERPO"
 api GET "/api/auditoria?tamano=5&pagina=2"
@@ -476,7 +530,7 @@ aplicar
 comprobar "Limpieza: datos de prueba borrados y configuración aplicada" "$?"
 docker exec "$RADIUS" rm -f /tmp/secreto /tmp/secreto-malo /tmp/secreto-raro
 api DELETE /api/sesion
-docker compose exec -T postgres psql -q -U radiuscontrol -d radiuscontrol -c     "DELETE FROM autenticaciones WHERE router_nombre LIKE '$ROUTER_PRUEBA%' OR usuario IN ('$USUARIO_PRUEBA', 'no-existe', 'DEFAULT'); DELETE FROM operadores WHERE usuario = '$ADMIN_PRUEBA'; DELETE FROM auditoria WHERE operador IN ('$OPERADOR_PRUEBA', '$ADMIN_PRUEBA') OR objeto = '$ADMIN_PRUEBA' OR objeto IN ('$OPERADOR_PRUEBA', 'Empresa de prueba') OR objeto LIKE '$ROUTER_PRUEBA%'; DELETE FROM empresas e WHERE e.nombre = 'Empresa de prueba' AND NOT EXISTS (SELECT 1 FROM routers r WHERE r.empresa_id = e.id)" >/dev/null 2>&1
+docker compose exec -T postgres psql -q -U radiuscontrol -d radiuscontrol -c     "DELETE FROM autenticaciones WHERE router_nombre LIKE '$ROUTER_PRUEBA%' OR usuario IN ('$USUARIO_PRUEBA', 'no-existe', 'DEFAULT'); DELETE FROM operadores WHERE usuario = '$ADMIN_PRUEBA'; DELETE FROM intentos_ip WHERE ip IN ('$IP_PRUEBA', '$IP_ATACANTE', '$IP_PUBLICA'); DELETE FROM auditoria WHERE operador IN ('$OPERADOR_PRUEBA', '$ADMIN_PRUEBA', 'prueba-direccion-fingida', 'usuario-que-no-existe') OR ip IN ('$IP_PRUEBA', '$IP_ATACANTE') OR objeto IN ('$IP_ATACANTE', '$IP_PRUEBA') OR objeto = '$ADMIN_PRUEBA' OR objeto IN ('$OPERADOR_PRUEBA', 'Empresa de prueba') OR objeto LIKE '$ROUTER_PRUEBA%'; DELETE FROM empresas e WHERE e.nombre = 'Empresa de prueba' AND NOT EXISTS (SELECT 1 FROM routers r WHERE r.empresa_id = e.id)" >/dev/null 2>&1
 
 anotar ""
 anotar "Evidencia: $EVIDENCIA"

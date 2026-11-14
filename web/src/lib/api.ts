@@ -108,6 +108,11 @@ export interface RespuestaUsuario {
   clave_generada?: string;
 }
 
+export interface Bloqueos {
+  bloqueos: { ip: string; desde: string; hasta: string; intentos: number }[];
+  regla: { intentos: number; ventana_minutos: number; bloqueo_minutos: number };
+}
+
 export interface PaginaAutenticaciones {
   autenticaciones: Autenticacion[];
   total: number;

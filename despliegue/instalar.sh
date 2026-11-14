@@ -123,4 +123,5 @@ else
     echo "Clave:    la que definiste en el panel."
 fi
 echo "Si pierdes el acceso: docker exec radiuscontrol-api radiuscontrol operador-emergencia admin"
+echo "Si tu IP queda bloqueada: docker exec radiuscontrol-api radiuscontrol desbloquear-ip todas"
 echo "Pruebas:  ./probar.sh"

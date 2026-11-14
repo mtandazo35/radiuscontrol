@@ -191,17 +191,27 @@ func (a *App) iniciarSesion(w http.ResponseWriter, r *http.Request) error {
 	ip := ipCliente(r)
 	incorrecto := &errHTTP{codigo: http.StatusUnauthorized, msg: "Usuario o contraseña incorrectos."}
 
+	// Una dirección bloqueada no llega a probar ninguna contraseña.
+	queda, err := a.ipBloqueada(ctx, ip)
+	if err != nil {
+		return err
+	}
+	if queda > 0 {
+		return errorBloqueoIP(queda)
+	}
+
 	var id, totpUltimo int64
 	var hash, rol, usuario string
 	var activo bool
 	var bloqueado *time.Time
 	var totpCifrado []byte
-	err := a.db.QueryRow(ctx, `SELECT id, usuario, clave_hash, rol, activo, bloqueado_hasta, totp_cifrado, totp_ultimo
+	err = a.db.QueryRow(ctx, `SELECT id, usuario, clave_hash, rol, activo, bloqueado_hasta, totp_cifrado, totp_ultimo
 		FROM operadores WHERE lower(usuario) = lower($1)`, in.Usuario).
 		Scan(&id, &usuario, &hash, &rol, &activo, &bloqueado, &totpCifrado, &totpUltimo)
 	if errors.Is(err, pgx.ErrNoRows) {
 		verificarArgon2(in.Clave, a.senuelo)
 		a.auditar(ctx, in.Usuario, ip, "sesion.fallida", "operador", map[string]any{"motivo": "usuario desconocido"})
+		a.registrarFalloIP(ctx, ip)
 		return incorrecto
 	}
 	if err != nil {
@@ -209,6 +219,7 @@ func (a *App) iniciarSesion(w http.ResponseWriter, r *http.Request) error {
 	}
 	if bloqueado != nil && bloqueado.After(time.Now()) {
 		a.auditar(ctx, usuario, ip, "sesion.fallida", "operador", map[string]any{"motivo": "cuenta bloqueada"})
+		a.registrarFalloIP(ctx, ip)
 		return &errHTTP{codigo: http.StatusTooManyRequests,
 			msg: "La cuenta está bloqueada temporalmente por intentos fallidos. Inténtalo más tarde."}
 	}
@@ -219,6 +230,7 @@ func (a *App) iniciarSesion(w http.ResponseWriter, r *http.Request) error {
 				THEN now() + make_interval(mins => $3) ELSE bloqueado_hasta END
 			WHERE id = $1`, id, intentosTope, minutosBloque)
 		a.auditar(ctx, usuario, ip, "sesion.fallida", "operador", map[string]any{"motivo": motivo})
+		a.registrarFalloIP(ctx, ip)
 		return err
 	}
 	if !verificarArgon2(in.Clave, hash) || !activo {
@@ -262,6 +274,10 @@ func (a *App) iniciarSesion(w http.ResponseWriter, r *http.Request) error {
 			return err
 		}
 		if _, err := tx.Exec(ctx, `DELETE FROM sesiones WHERE expira < now()`); err != nil {
+			return err
+		}
+		// Un acceso correcto borra los intentos fallidos anteriores de esa dirección.
+		if _, err := tx.Exec(ctx, `DELETE FROM intentos_ip WHERE ip = $1`, ip); err != nil {
 			return err
 		}
 		_, err := tx.Exec(ctx, `INSERT INTO sesiones (token_hash, operador_id, ip, expira)
