@@ -37,11 +37,16 @@ echo "== 1b. Repositorio"
 # secretos y el entorno no están versionados y no se tocan.
 RAIZ="$(cd "$DIR/.." && pwd)"
 URL_REPO="${RC_REPO_URL:-https://github.com/mtandazo35/radiuscontrol.git}"
-if [ ! -d "$RAIZ/.git" ]; then
-    git -C "$RAIZ" init -q -b main
-    git -C "$RAIZ" remote add origin "$URL_REPO"
+# git se niega a trabajar en una carpeta cuyos archivos son de otro usuario.
+if [ "$(stat -c %u "$RAIZ")" != "0" ] || [ -n "$(find "$RAIZ" -maxdepth 2 ! -user root -print -quit)" ]; then
+    chown -R root:root "$RAIZ"
+fi
+if ! git -C "$RAIZ" rev-parse HEAD >/dev/null 2>&1; then
+    [ -d "$RAIZ/.git" ] || git -C "$RAIZ" init -q -b main
+    git -C "$RAIZ" remote get-url origin >/dev/null 2>&1 || git -C "$RAIZ" remote add origin "$URL_REPO"
     git -C "$RAIZ" fetch -q origin main
     git -C "$RAIZ" reset -q --hard origin/main
+    git -C "$RAIZ" branch -q --set-upstream-to=origin/main main 2>/dev/null || true
     echo "carpeta convertida en copia de git: $(git -C "$RAIZ" rev-parse --short HEAD)"
 else
     echo "versión instalada: $(git -C "$RAIZ" rev-parse --short HEAD)"
