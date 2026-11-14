@@ -1,0 +1,8 @@
+.git
+**/node_modules
+web/dist
+despliegue/secrets
+despliegue/.env
+despliegue/evidencias
+datos
+docs

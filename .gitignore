@@ -6,9 +6,6 @@
 *.sqlite
 *.sqlite-wal
 
-# Lo que el laboratorio genera en el servidor
-/lab/generado/
-
 # Secretos y entorno
 .env
 .env.*
@@ -22,3 +19,7 @@
 /dist/
 node_modules/
 *.log
+
+# Lo que el despliegue genera en el servidor
+/despliegue/secrets/
+/despliegue/evidencias/

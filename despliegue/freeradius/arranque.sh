@@ -1,0 +1,78 @@
+#!/bin/sh
+# Arranque del contenedor de FreeRADIUS.
+#
+# Carga la configuración que la API deja en el volumen compartido y reinicia
+# FreeRADIUS cuando el enlace «actual» apunta a otra versión. No depende de la
+# API ni de la base: si ambas caen, sigue con la última versión cargada.
+set -u
+
+COMP="${DIR_COMPILADO:-/compilado}"
+RADDB="${DIR_RADDB:-/etc/freeradius}"
+GRUPO="$(stat -c %g "$RADDB/radiusd.conf")"
+PID=""
+
+terminar() {
+    [ -n "$PID" ] && kill -TERM "$PID" 2>/dev/null
+    wait 2>/dev/null
+    exit 0
+}
+trap terminar TERM INT
+
+mkdir -p "$COMP/estado"
+
+# informar <estado> <versión> <huella clients> <huella authorize>
+informar() {
+    printf '{"estado":"%s","version":"%s","sha_clients":"%s","sha_authorize":"%s","desde":"%s"}\n' \
+        "$1" "$2" "$3" "$4" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$COMP/estado/cargado.json.tmp" \
+        && mv "$COMP/estado/cargado.json.tmp" "$COMP/estado/cargado.json"
+}
+
+version_actual() {
+    readlink "$COMP/actual" 2>/dev/null || true
+}
+
+AVISADO=""
+while :; do
+    V="$(version_actual)"
+    if [ -z "$V" ] || [ ! -f "$COMP/$V/clients.conf" ] || [ ! -f "$COMP/$V/authorize" ]; then
+        if [ -z "$AVISADO" ]; then
+            echo "arranque: todavía no hay configuración aplicada; en espera"
+            informar sin-configuracion "" "" ""
+            AVISADO=1
+        fi
+        sleep 2
+        continue
+    fi
+    AVISADO=""
+
+    install -o root -g "$GRUPO" -m 0640 "$COMP/$V/clients.conf" "$RADDB/clients.conf"
+    install -o root -g "$GRUPO" -m 0640 "$COMP/$V/authorize" "$RADDB/mods-config/files/authorize"
+    SC="$(sha256sum "$RADDB/clients.conf" | cut -d' ' -f1)"
+    SA="$(sha256sum "$RADDB/mods-config/files/authorize" | cut -d' ' -f1)"
+
+    echo "arranque: cargando la versión ${V##*/}"
+    freeradius -f -l stdout &
+    PID=$!
+    sleep 2
+    if kill -0 "$PID" 2>/dev/null; then
+        informar en-marcha "${V##*/}" "$SC" "$SA"
+    fi
+
+    while kill -0 "$PID" 2>/dev/null; do
+        sleep 1
+        if [ "$(version_actual)" != "$V" ]; then
+            echo "arranque: hay una versión nueva; reiniciando FreeRADIUS"
+            kill -TERM "$PID" 2>/dev/null
+            break
+        fi
+    done
+    wait "$PID" 2>/dev/null
+    PID=""
+
+    if [ "$(version_actual)" = "$V" ]; then
+        # FreeRADIUS se detuvo sin que cambiara la versión: algo falló.
+        echo "arranque: FreeRADIUS se detuvo de forma inesperada; reintento en 5 s"
+        informar error "${V##*/}" "$SC" "$SA"
+        sleep 5
+    fi
+done

@@ -1,0 +1,78 @@
+name: radiuscontrol
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: radiuscontrol
+      POSTGRES_USER: radiuscontrol
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_clave
+    secrets:
+      - postgres_clave
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U radiuscontrol -d radiuscontrol"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: ..
+      dockerfile: despliegue/api.Dockerfile
+    container_name: radiuscontrol-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SERVIDOR_RADIUS: ${SERVIDOR_RADIUS}
+      ADMIN_USUARIO: ${ADMIN_USUARIO:-admin}
+    secrets:
+      - postgres_clave
+      - clave_maestra
+      - admin_clave
+    volumes:
+      - compilado:/compilado
+    # Solo en el equipo local: al panel se llega por el proxy web.
+    ports:
+      - "127.0.0.1:8080:8080"
+
+  freeradius:
+    build:
+      context: ..
+      dockerfile: despliegue/freeradius/Dockerfile
+    container_name: radiuscontrol-freeradius
+    restart: unless-stopped
+    # Red del host: FreeRADIUS debe ver la IP de origen real de cada router.
+    network_mode: host
+    volumes:
+      - compilado:/compilado
+
+  web:
+    build:
+      context: ..
+      dockerfile: despliegue/web.Dockerfile
+    container_name: radiuscontrol-web
+    restart: unless-stopped
+    # Red del host: así el firewall del equipo decide quién llega al 443.
+    network_mode: host
+    environment:
+      SITIO: ${SITIO}
+    volumes:
+      - caddy_data:/data
+
+secrets:
+  postgres_clave:
+    file: ./secrets/postgres_clave
+  clave_maestra:
+    file: ./secrets/clave_maestra
+  admin_clave:
+    file: ./secrets/admin_clave
+
+volumes:
+  pgdata:
+  compilado:
+  caddy_data:
