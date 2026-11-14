@@ -1,0 +1,100 @@
+export class ErrorApi extends Error {
+  constructor(
+    public estado: number,
+    mensaje: string,
+    public detalle?: string,
+  ) {
+    super(mensaje);
+  }
+}
+
+export async function api<T>(metodo: string, ruta: string, cuerpo?: unknown): Promise<T> {
+  let respuesta: Response;
+  try {
+    respuesta = await fetch(`/api${ruta}`, {
+      method: metodo,
+      credentials: "same-origin",
+      headers: { "X-RC": "1", ...(cuerpo !== undefined ? { "Content-Type": "application/json" } : {}) },
+      body: cuerpo !== undefined ? JSON.stringify(cuerpo) : undefined,
+    });
+  } catch {
+    throw new ErrorApi(0, "No se pudo contactar con el servidor.");
+  }
+  let datos: any = null;
+  try {
+    datos = await respuesta.json();
+  } catch {
+    // Respuesta sin cuerpo JSON.
+  }
+  if (!respuesta.ok) {
+    if (respuesta.status === 401 && ruta !== "/sesion") {
+      window.dispatchEvent(new Event("rc:sesion-caducada"));
+    }
+    throw new ErrorApi(respuesta.status, datos?.error ?? `Error ${respuesta.status}`, datos?.detalle);
+  }
+  return datos as T;
+}
+
+export interface Operador {
+  usuario: string;
+  rol: string;
+}
+
+export interface Router {
+  id: number;
+  nombre: string;
+  descripcion: string;
+  activo: boolean;
+  redes: string[];
+  secreto_rotado: string;
+  exigir_message_authenticator: boolean;
+  creado: string;
+}
+
+export interface RespuestaRouter {
+  router: Router;
+  secreto_generado?: string;
+  script_rsc?: string;
+}
+
+export interface Usuario {
+  id: number;
+  usuario: string;
+  nombre_completo: string;
+  grupo: string;
+  activo: boolean;
+  clave_cambiada: string;
+  creado: string;
+}
+
+export interface RespuestaUsuario {
+  usuario: Usuario;
+  clave_generada?: string;
+}
+
+export interface Version {
+  id: number;
+  creada: string;
+  operador: string;
+  estado: string;
+  mensaje: string;
+  activa: boolean;
+  routers: number;
+  usuarios: number;
+  sha_clients: string;
+  sha_authorize: string;
+}
+
+export interface Estado {
+  cambios_pendientes: boolean;
+  sincronizado: boolean;
+  deseado: { routers: number; usuarios: number; sha_clients: string; sha_authorize: string };
+  activa: Version | null;
+  freeradius: {
+    estado: string;
+    version: string;
+    sha_clients: string;
+    sha_authorize: string;
+    desde: string;
+  } | null;
+}
