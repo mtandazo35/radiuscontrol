@@ -186,12 +186,44 @@ func (a *App) listarEmpresas(w http.ResponseWriter, r *http.Request, _ *Operador
 	return nil
 }
 
-// guardarRedes sustituye las redes de un router dentro de una transacción.
+// guardarRedes deja al router con exactamente estas redes. Las que ya tenía
+// conservan su identificador: así, editar el nombre o la empresa no altera la
+// configuración compilada ni obliga a reiniciar FreeRADIUS.
 func guardarRedes(ctx context.Context, tx pgx.Tx, routerID int64, redes []netip.Prefix) error {
-	if _, err := tx.Exec(ctx, `DELETE FROM router_redes WHERE router_id = $1`, routerID); err != nil {
+	tengo := map[string]int64{}
+	filas, err := tx.Query(ctx, `SELECT id, text(red) FROM router_redes WHERE router_id = $1`, routerID)
+	if err != nil {
 		return err
 	}
+	for filas.Next() {
+		var id int64
+		var red string
+		if err := filas.Scan(&id, &red); err != nil {
+			filas.Close()
+			return err
+		}
+		tengo[red] = id
+	}
+	filas.Close()
+	if err := filas.Err(); err != nil {
+		return err
+	}
+
+	quiero := map[string]bool{}
 	for _, red := range redes {
+		quiero[red.String()] = true
+	}
+	for red, id := range tengo {
+		if !quiero[red] {
+			if _, err := tx.Exec(ctx, `DELETE FROM router_redes WHERE id = $1`, id); err != nil {
+				return err
+			}
+		}
+	}
+	for _, red := range redes {
+		if _, ya := tengo[red.String()]; ya {
+			continue
+		}
 		var nombre, otra string
 		err := tx.QueryRow(ctx, `SELECT r.nombre, text(rr.red)
 			FROM router_redes rr JOIN routers r ON r.id = rr.router_id

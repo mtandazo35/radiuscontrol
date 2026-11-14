@@ -23,6 +23,7 @@ type Config struct {
 	DirCompilado   string
 	DirRaddb       string
 	DirRegistro    string
+	EsperaAplicar  time.Duration
 	ServidorRadius string
 }
 
@@ -31,6 +32,8 @@ type App struct {
 	cifra     *Cifrador
 	cfg       Config
 	aplicarMu sync.Mutex
+	autoMu    sync.Mutex
+	autoTimer *time.Timer
 	senuelo   string
 }
 
@@ -39,6 +42,15 @@ func env(clave, defecto string) string {
 		return v
 	}
 	return defecto
+}
+
+// esperaAplicar es el tiempo que se deja pasar tras un cambio antes de
+// aplicarlo solo. Con APLICAR_AUTOMATICO=no los cambios se aplican a mano.
+func esperaAplicar() time.Duration {
+	if env("APLICAR_AUTOMATICO", "si") == "no" {
+		return 0
+	}
+	return 2 * time.Second
 }
 
 func leerArchivo(ruta string) (string, error) {
@@ -99,6 +111,7 @@ func main() {
 			DirCompilado:   env("DIR_COMPILADO", "/compilado"),
 			DirRaddb:       env("DIR_RADDB", "/etc/freeradius"),
 			DirRegistro:    env("DIR_REGISTRO", "/registro"),
+			EsperaAplicar:  esperaAplicar(),
 			ServidorRadius: env("SERVIDOR_RADIUS", "192.0.2.1"),
 		},
 		senuelo: senuelo,
@@ -198,24 +211,33 @@ func (a *App) crearOperadorInicial(ctx context.Context) error {
 
 func (a *App) rutas() http.Handler {
 	m := http.NewServeMux()
+	cambia := func(h manejador) http.HandlerFunc {
+		return a.privado(func(w http.ResponseWriter, r *http.Request, op *Operador) error {
+			err := h(w, r, op)
+			if err == nil {
+				a.programarAplicar(op.Usuario)
+			}
+			return err
+		})
+	}
 	m.HandleFunc("POST /api/sesion", a.publico(a.iniciarSesion))
 	m.HandleFunc("GET /api/sesion", a.privado(a.verSesion))
 	m.HandleFunc("DELETE /api/sesion", a.privado(a.cerrarSesion))
 
 	m.HandleFunc("GET /api/routers", a.privado(a.listarRouters))
-	m.HandleFunc("POST /api/routers", a.privado(a.crearRouter))
-	m.HandleFunc("PUT /api/routers/{id}", a.privado(a.editarRouter))
-	m.HandleFunc("DELETE /api/routers/{id}", a.privado(a.borrarRouter))
-	m.HandleFunc("POST /api/routers/{id}/secreto", a.privado(a.rotarSecreto))
+	m.HandleFunc("POST /api/routers", cambia(a.crearRouter))
+	m.HandleFunc("PUT /api/routers/{id}", cambia(a.editarRouter))
+	m.HandleFunc("DELETE /api/routers/{id}", cambia(a.borrarRouter))
+	m.HandleFunc("POST /api/routers/{id}/secreto", cambia(a.rotarSecreto))
 
 	m.HandleFunc("GET /api/empresas", a.privado(a.listarEmpresas))
 	m.HandleFunc("GET /api/autenticaciones", a.privado(a.listarAutenticaciones))
 
 	m.HandleFunc("GET /api/usuarios", a.privado(a.listarUsuarios))
-	m.HandleFunc("POST /api/usuarios", a.privado(a.crearUsuario))
-	m.HandleFunc("PUT /api/usuarios/{id}", a.privado(a.editarUsuario))
-	m.HandleFunc("DELETE /api/usuarios/{id}", a.privado(a.borrarUsuario))
-	m.HandleFunc("POST /api/usuarios/{id}/clave", a.privado(a.cambiarClaveUsuario))
+	m.HandleFunc("POST /api/usuarios", cambia(a.crearUsuario))
+	m.HandleFunc("PUT /api/usuarios/{id}", cambia(a.editarUsuario))
+	m.HandleFunc("DELETE /api/usuarios/{id}", cambia(a.borrarUsuario))
+	m.HandleFunc("POST /api/usuarios/{id}/clave", cambia(a.cambiarClaveUsuario))
 
 	m.HandleFunc("GET /api/estado", a.privado(a.verEstado))
 	m.HandleFunc("POST /api/aplicar", a.privado(a.aplicar))

@@ -128,4 +128,5 @@ export interface Estado {
     desde: string;
   } | null;
   firewall_al_dia: boolean;
+  ultimo_fallo: string;
 }

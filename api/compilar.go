@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -317,52 +318,99 @@ func (a *App) marcarActiva(ctx context.Context, id int64) error {
 	})
 }
 
-func (a *App) aplicar(w http.ResponseWriter, r *http.Request, op *Operador) error {
+// aplicarDeseado compila el estado deseado, lo valida y lo activa. Si ya
+// coincide con la versión activa no hace nada y devuelve hecho = false.
+func (a *App) aplicarDeseado(ctx context.Context, operador, ip string) (id int64, hecho bool, salida string, err error) {
 	a.aplicarMu.Lock()
 	defer a.aplicarMu.Unlock()
-	ctx := r.Context()
 
 	c, err := a.compilarDeseado(ctx)
 	if err != nil {
-		return err
+		return 0, false, "", err
 	}
+	var shaC, shaA string
+	err = a.db.QueryRow(ctx, `SELECT id, sha_clients, sha_authorize FROM versiones_config WHERE activa`).
+		Scan(&id, &shaC, &shaA)
+	if err == nil && shaC == c.ShaClients && shaA == c.ShaAuthorize {
+		return id, false, "", nil
+	}
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return 0, false, "", err
+	}
+
 	cc, err := a.cifra.Cifrar(c.Clients, dominioVersion)
 	if err != nil {
-		return err
+		return 0, false, "", err
 	}
 	ac, err := a.cifra.Cifrar(c.Authorize, dominioVersion)
 	if err != nil {
-		return err
+		return 0, false, "", err
 	}
-	var id int64
 	if err := a.db.QueryRow(ctx, `INSERT INTO versiones_config
 		(operador, estado, routers, usuarios, sha_clients, sha_authorize, clients_cifrado, authorize_cifrado)
 		VALUES ($1, 'validando', $2, $3, $4, $5, $6, $7) RETURNING id`,
-		op.Usuario, c.Routers, c.Usuarios, c.ShaClients, c.ShaAuthorize, cc, ac).Scan(&id); err != nil {
-		return err
+		operador, c.Routers, c.Usuarios, c.ShaClients, c.ShaAuthorize, cc, ac).Scan(&id); err != nil {
+		return 0, false, "", err
 	}
 
-	salida, err := a.validar(ctx, c)
+	salida, err = a.validar(ctx, c)
 	if err != nil {
 		_, _ = a.db.Exec(ctx, `UPDATE versiones_config SET estado = 'fallida', mensaje = $2 WHERE id = $1`,
 			id, salida)
-		a.auditar(ctx, op.Usuario, ipCliente(r), "config.rechazada", fmt.Sprintf("versión %d", id), nil)
-		return &errHTTP{codigo: http.StatusUnprocessableEntity,
-			msg:   "FreeRADIUS rechazó la configuración. No se cambió nada.",
-			extra: map[string]any{"detalle": salida}}
+		a.auditar(ctx, operador, ip, "config.rechazada", fmt.Sprintf("versión %d", id), nil)
+		return id, false, salida, errRechazada
 	}
 	if err := a.activar(id, c); err != nil {
 		_, _ = a.db.Exec(ctx, `UPDATE versiones_config SET estado = 'fallida', mensaje = $2 WHERE id = $1`,
 			id, err.Error())
-		return err
+		return id, false, "", err
 	}
 	if err := a.marcarActiva(ctx, id); err != nil {
+		return id, false, "", err
+	}
+	a.auditar(ctx, operador, ip, "config.aplicada", fmt.Sprintf("versión %d", id),
+		map[string]any{"routers": c.Routers, "usuarios": c.Usuarios})
+	return id, true, "", nil
+}
+
+var errRechazada = errors.New("FreeRADIUS rechazó la configuración")
+
+func (a *App) aplicar(w http.ResponseWriter, r *http.Request, op *Operador) error {
+	id, hecho, salida, err := a.aplicarDeseado(r.Context(), op.Usuario, ipCliente(r))
+	if errors.Is(err, errRechazada) {
+		return &errHTTP{codigo: http.StatusUnprocessableEntity,
+			msg:   "FreeRADIUS rechazó la configuración. No se cambió nada.",
+			extra: map[string]any{"detalle": salida}}
+	}
+	if err != nil {
 		return err
 	}
-	a.auditar(ctx, op.Usuario, ipCliente(r), "config.aplicada", fmt.Sprintf("versión %d", id),
-		map[string]any{"routers": c.Routers, "usuarios": c.Usuarios})
-	escribirJSON(w, http.StatusOK, map[string]any{"version": id})
+	escribirJSON(w, http.StatusOK, map[string]any{"version": id, "sin_cambios": !hecho})
 	return nil
+}
+
+// programarAplicar aplica los cambios por su cuenta poco después de guardarlos.
+// Varios cambios seguidos se juntan en una sola aplicación.
+func (a *App) programarAplicar(operador string) {
+	if a.cfg.EsperaAplicar <= 0 {
+		return
+	}
+	a.autoMu.Lock()
+	defer a.autoMu.Unlock()
+	if a.autoTimer != nil {
+		a.autoTimer.Stop()
+	}
+	a.autoTimer = time.AfterFunc(a.cfg.EsperaAplicar, func() {
+		ctx, cancelar := context.WithTimeout(context.Background(), 90*time.Second)
+		defer cancelar()
+		id, hecho, _, err := a.aplicarDeseado(ctx, operador, "automático")
+		switch {
+		case err != nil:
+			log.Printf("aplicación automática: versión %d no aplicada: %v", id, err)
+		case hecho:
+			log.Printf("aplicación automática: versión %d activada", id)
+		}
+	})
 }
 
 func (a *App) activarVersion(w http.ResponseWriter, r *http.Request, op *Operador) error {
@@ -458,6 +506,25 @@ type Firewall struct {
 	Desde     string   `json:"desde"`
 }
 
+// ultimoFallo devuelve el mensaje del último intento rechazado, si es posterior
+// a la versión activa.
+func (a *App) ultimoFallo(ctx context.Context, activa *Version) string {
+	var desde int64
+	if activa != nil {
+		desde = activa.ID
+	}
+	var mensaje string
+	err := a.db.QueryRow(ctx, `SELECT mensaje FROM versiones_config
+		WHERE estado = 'fallida' AND id > $1 ORDER BY id DESC LIMIT 1`, desde).Scan(&mensaje)
+	if err != nil {
+		return ""
+	}
+	if mensaje == "" {
+		mensaje = "FreeRADIUS rechazó la configuración."
+	}
+	return mensaje
+}
+
 func (a *App) verEstado(w http.ResponseWriter, r *http.Request, _ *Operador) error {
 	ctx := r.Context()
 	deseado, err := a.compilarDeseado(ctx)
@@ -506,6 +573,7 @@ func (a *App) verEstado(w http.ResponseWriter, r *http.Request, _ *Operador) err
 		"freeradius": cargado,
 		"firewall":           firewall,
 		"firewall_al_dia":    firewallAlDia,
+		"ultimo_fallo":       a.ultimoFallo(ctx, activa),
 	})
 	return nil
 }

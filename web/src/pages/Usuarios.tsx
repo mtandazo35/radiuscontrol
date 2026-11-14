@@ -50,7 +50,7 @@ export default function Usuarios() {
     if (!r.clave_generada) return;
     avisar({
       titulo,
-      mensaje: "Esta contraseña se muestra una sola vez. Entrégala a la persona y recuerda aplicar los cambios en el panel.",
+      mensaje: "Esta contraseña se muestra una sola vez. Entrégala a la persona; el cambio se aplica solo en unos segundos.",
       copiable: r.clave_generada,
     });
   };
@@ -98,7 +98,7 @@ export default function Usuarios() {
   const nuevaClave = async (u: Usuario) => {
     const ok = await confirmar(
       "Restablecer la contraseña",
-      `Se generará una contraseña nueva para «${u.usuario}». La anterior dejará de servir cuando apliques los cambios.`,
+      `Se generará una contraseña nueva para «${u.usuario}». La anterior dejará de servir en unos segundos.`,
       "Restablecer",
     );
     if (!ok) return;
@@ -112,7 +112,7 @@ export default function Usuarios() {
   };
 
   const borrar = async (u: Usuario) => {
-    const ok = await confirmar("Eliminar el usuario", `«${u.usuario}» dejará de entrar a los routers cuando apliques los cambios.`, "Eliminar", true);
+    const ok = await confirmar("Eliminar el usuario", `«${u.usuario}» dejará de entrar a los routers en unos segundos.`, "Eliminar", true);
     if (!ok) return;
     try {
       await api("DELETE", `/usuarios/${u.id}`);

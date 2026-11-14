@@ -60,7 +60,7 @@ export function ProveedorApp({ children }: { children: React.ReactNode }) {
       return;
     }
     refrescarEstado();
-    const t = window.setInterval(refrescarEstado, 5000);
+    const t = window.setInterval(refrescarEstado, 2000);
     return () => window.clearInterval(t);
   }, [operador, refrescarEstado]);
 

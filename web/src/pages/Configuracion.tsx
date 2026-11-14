@@ -44,7 +44,7 @@ export default function Configuracion() {
   const volver = async (v: Version) => {
     const ok = await confirmar(
       `Volver a la versión ${v.id}`,
-      "FreeRADIUS volverá a usar esa configuración tal como se aplicó. Los datos del panel no cambian, así que quedará marcado como «cambios sin aplicar».",
+      "FreeRADIUS volverá a usar esa configuración tal como se aplicó. Los datos del panel no cambian: el próximo cambio que guardes volverá a aplicar los datos del panel.",
       "Volver a esta versión",
     );
     if (!ok) return;
@@ -84,7 +84,7 @@ export default function Configuracion() {
               </span>
             </Dato>
             <Dato titulo="Situación">
-              {estado?.cambios_pendientes ? <Badge variant="warning">Cambios sin aplicar</Badge> : <Badge variant="success">Igual a lo aplicado</Badge>}
+              {estado?.cambios_pendientes ? <Badge variant="warning">Distinto de lo aplicado</Badge> : <Badge variant="success">Igual a lo aplicado</Badge>}
             </Dato>
           </dl>
         </Card>

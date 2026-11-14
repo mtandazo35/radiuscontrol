@@ -48,7 +48,7 @@ export default function Routers() {
     avisar({
       titulo,
       mensaje:
-        "Este secreto se muestra una sola vez. Pega estas líneas en el terminal del router, y aplica los cambios en el panel: al aplicar, el firewall del servidor se abre solo para las redes de este router.",
+        "Este secreto se muestra una sola vez. Pega estas líneas en el terminal del router, El panel aplica el cambio solo en unos segundos y abre el firewall del servidor únicamente para las redes de este router.",
       copiable: r.script_rsc,
     });
   };
@@ -100,7 +100,7 @@ export default function Routers() {
   const rotar = async (r: Router) => {
     const ok = await confirmar(
       "Rotar el secreto",
-      `Se generará un secreto nuevo para «${r.nombre}». Al aplicar los cambios el secreto anterior dejará de servir, así que el router debe actualizarse a la vez.`,
+      `Se generará un secreto nuevo para «${r.nombre}». El cambio se aplica en unos segundos y el secreto anterior deja de servir: ten a mano el router para actualizarlo enseguida.`,
       "Rotar secreto",
     );
     if (!ok) return;
@@ -114,7 +114,7 @@ export default function Routers() {
   };
 
   const borrar = async (r: Router) => {
-    const ok = await confirmar("Eliminar el router", `«${r.nombre}» dejará de autenticar cuando apliques los cambios.`, "Eliminar", true);
+    const ok = await confirmar("Eliminar el router", `«${r.nombre}» dejará de autenticar en unos segundos y su red se cerrará en el firewall.`, "Eliminar", true);
     if (!ok) return;
     try {
       await api("DELETE", `/routers/${r.id}`);

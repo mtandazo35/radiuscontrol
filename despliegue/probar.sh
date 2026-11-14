@@ -166,23 +166,27 @@ OCULTAR+=("$CLAVE")
 HASH_NT="$(printf '%s' "$CLAVE" | iconv -f UTF-8 -t UTF-16LE | openssl dgst -md4 -provider legacy -provider default -r | awk '{print toupper($1)}')"
 OCULTAR+=("$HASH_NT")
 
-api GET /api/estado
-comprobar "Estado: hay cambios pendientes antes de aplicar" \
-    "$([ "$(printf '%s' "$CUERPO" | jq -r .cambios_pendientes)" = "true" ]; echo $?)"
 
 PAP_OK="User-Name = \"$USUARIO_PRUEBA\", User-Password = \"$CLAVE\""
 CHAP_OK="User-Name = \"$USUARIO_PRUEBA\", MS-CHAP-Password = \"$CLAVE\""
 poner_secreto /tmp/secreto "$SECRETO"
 poner_secreto /tmp/secreto-malo "secreto-equivocado"
 
-S="$(radius 127.0.0.1 /tmp/secreto "$PAP_OK")"
-comprobar "RADIUS: antes de aplicar, el router nuevo todavía no autentica" \
-    "$(printf '%s' "$S" | grep -q 'Received Access-Accept'; [ $? -ne 0 ]; echo $?)"
-
-# ---------------------------------------------------------------- aplicar
-aplicar
-comprobar "Aplicar: FreeRADIUS carga la versión nueva y las huellas coinciden" "$?" \
+# ---------------------------------------------------------------- aplicación automática
+esperar_sincronizado
+comprobar "Aplicación automática: los cambios guardados llegan a FreeRADIUS sin pulsar nada" "$?" \
     "$(printf '%s' "$CUERPO" | jq -c '{cambios_pendientes, sincronizado, activa: .activa.id, freeradius}')"
+
+api GET /api/estado
+VERSION_ANTES="$(printf '%s' "$CUERPO" | jq -r '.activa.id')"
+api PUT "/api/routers/$ROUTER_ID" "$(jq -n --arg n "$ROUTER_PRUEBA" '{nombre:$n,empresa:"Empresa de prueba",descripcion:"Otra descripción",redes:["127.0.0.1"]}')"
+sleep 5
+api GET /api/estado
+comprobar "Edición: cambiar solo la descripción no genera una versión nueva ni reinicia FreeRADIUS" \
+    "$([ "$(printf '%s' "$CUERPO" | jq -r '.activa.id')" = "$VERSION_ANTES" ] && [ "$(printf '%s' "$CUERPO" | jq -r .cambios_pendientes)" = "false" ]; echo $?)"
+api POST /api/aplicar
+comprobar "Aplicar a mano sin cambios pendientes no hace nada" \
+    "$([ "$(printf '%s' "$CUERPO" | jq -r .sin_cambios)" = "true" ]; echo $?)"
 
 regla_fw() { ufw show added | grep -q -x "ufw allow from 127.0.0.1 to any port 1812 proto udp comment 'radiuscontrol'"; }
 esperar_fw() { # <0: debe existir | 1: no debe existir>

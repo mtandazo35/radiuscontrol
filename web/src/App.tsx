@@ -21,23 +21,37 @@ const secciones = [
 function IndicadorEstado() {
   const { estado } = useApp();
   if (!estado) return <Badge variant="muted">Sin datos</Badge>;
-  if (estado.cambios_pendientes) return <Badge variant="warning">Cambios sin aplicar</Badge>;
-  if (!estado.sincronizado) return <Badge variant="destructive">FreeRADIUS no sincronizado</Badge>;
-  if (!estado.firewall_al_dia) return <Badge variant="destructive">Firewall sin sincronizar</Badge>;
+  if (estado.cambios_pendientes && estado.ultimo_fallo) return <Badge variant="destructive">No se pudo aplicar</Badge>;
+  if (estado.cambios_pendientes) return <Badge variant="warning">Aplicando cambios…</Badge>;
+  if (!estado.sincronizado) return <Badge variant="warning">FreeRADIUS cargando…</Badge>;
+  if (!estado.firewall_al_dia) return <Badge variant="warning">Firewall actualizándose…</Badge>;
   return <Badge variant="success">Aplicado y en marcha</Badge>;
 }
 
+// Los cambios se aplican solos a los pocos segundos de guardarlos. Este botón
+// solo aparece si algo quedó sin aplicar, para reintentarlo y ver el motivo.
 function BotonAplicar() {
-  const { estado, refrescarEstado, avisar, avisarError, confirmar } = useApp();
+  const { estado, refrescarEstado, avisar, avisarError } = useApp();
   const [ocupado, setOcupado] = React.useState(false);
-  if (!estado?.cambios_pendientes) return null;
+  const [desde, setDesde] = React.useState<number | null>(null);
+  const pendiente = estado?.cambios_pendientes ?? false;
+
+  React.useEffect(() => {
+    setDesde(pendiente ? Date.now() : null);
+  }, [pendiente]);
+
+  const [, refrescar] = React.useState(0);
+  React.useEffect(() => {
+    if (!pendiente) return;
+    const t = window.setInterval(() => refrescar((n) => n + 1), 2000);
+    return () => window.clearInterval(t);
+  }, [pendiente]);
+
+  // Se le da margen a la aplicación automática antes de ofrecer el botón.
+  const atascado = pendiente && (Boolean(estado?.ultimo_fallo) || (desde !== null && Date.now() - desde > 15000));
+  if (!atascado) return null;
+
   const aplicar = async () => {
-    const ok = await confirmar(
-      "Aplicar la configuración",
-      `Se generará la configuración de FreeRADIUS con ${estado.deseado.routers} router(es) y ${estado.deseado.usuarios} usuario(s) activos. FreeRADIUS la valida antes de activarla y se reinicia en un par de segundos.`,
-      "Aplicar",
-    );
-    if (!ok) return;
     setOcupado(true);
     try {
       const r = await api<{ version: number }>("POST", "/aplicar");
@@ -51,7 +65,7 @@ function BotonAplicar() {
   };
   return (
     <Button size="sm" onClick={aplicar} disabled={ocupado}>
-      {ocupado ? "Aplicando…" : "Aplicar cambios"}
+      {ocupado ? "Aplicando…" : "Reintentar aplicar"}
     </Button>
   );
 }
