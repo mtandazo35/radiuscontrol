@@ -97,8 +97,30 @@ else
     echo "UFW no está instalado: el agente de firewall no se instala"
 fi
 
+echo "== 7. Contraseña inicial"
+# La contraseña inicial solo hace falta en el primer arranque. Después se
+# muestra una vez y se borra del disco: en la base queda únicamente su hash.
+CLAVE_INICIAL="$(cat "$DIR/secrets/admin_clave")"
+if [ "$CLAVE_INICIAL" != "consumida" ]; then
+    for _ in $(seq 1 60); do
+        docker logs radiuscontrol-api 2>&1 | grep -q "API de RadiusControl escuchando" && break
+        sleep 1
+    done
+    printf 'consumida\n' > "$DIR/secrets/admin_clave"
+    echo "retirada del disco"
+else
+    CLAVE_INICIAL=""
+    echo "ya se había retirado"
+fi
+
 echo
 echo "Panel:    https://$IP"
 echo "Usuario:  admin"
-echo "Clave:    en $DIR/secrets/admin_clave"
+if [ -n "$CLAVE_INICIAL" ]; then
+    echo "Clave:    $CLAVE_INICIAL"
+    echo "          Se muestra solo esta vez. Cámbiala al entrar (Seguridad, Mi cuenta)."
+else
+    echo "Clave:    la que definiste en el panel."
+fi
+echo "Si pierdes el acceso: docker exec radiuscontrol-api radiuscontrol operador-emergencia admin"
 echo "Pruebas:  ./probar.sh"

@@ -2,7 +2,7 @@ import { Plus } from "lucide-react";
 import QRCode from "qrcode";
 import * as React from "react";
 import { Badge, Button, Card, Dialog, DialogContent, DialogFooter, Input, Label, Table, Td, Th } from "@/components/ui";
-import { api, type Evento, type OperadorDetalle, type Sesion } from "@/lib/api";
+import { api, type OperadorDetalle, type PaginaEventos, type Sesion } from "@/lib/api";
 import { fecha } from "@/lib/utils";
 import { useApp } from "../contexto";
 
@@ -452,27 +452,46 @@ function Sesiones() {
 
 function Actividad() {
   const { avisarError } = useApp();
-  const [lista, setLista] = React.useState<Evento[] | null>(null);
+  const [datos, setDatos] = React.useState<PaginaEventos | null>(null);
   const [buscar, setBuscar] = React.useState("");
+  const [pagina, setPagina] = React.useState(1);
+  const [tamano, setTamano] = React.useState(25);
 
   React.useEffect(() => {
     const t = window.setTimeout(async () => {
       try {
-        const q = new URLSearchParams({ limite: "150" });
+        const q = new URLSearchParams({ pagina: String(pagina), tamano: String(tamano) });
         if (buscar.trim()) q.set("buscar", buscar.trim());
-        setLista(await api<Evento[]>("GET", `/auditoria?${q}`));
+        const r = await api<PaginaEventos>("GET", `/auditoria?${q}`);
+        setDatos(r);
+        // El servidor corrige una página que ya no existe.
+        if (r.pagina !== pagina) setPagina(r.pagina);
       } catch (e) {
         avisarError(e);
       }
     }, 250);
     return () => window.clearTimeout(t);
-  }, [buscar, avisarError]);
+  }, [buscar, pagina, tamano, avisarError]);
+
+  const desde = datos && datos.total > 0 ? (datos.pagina - 1) * datos.tamano + 1 : 0;
+  const hasta = datos ? Math.min(datos.pagina * datos.tamano, datos.total) : 0;
 
   return (
     <Seccion
       titulo="Registro de actividad"
       descripcion="Accesos al panel, intentos fallidos y cada cambio hecho, con quién lo hizo y desde qué dirección. Nunca guarda contraseñas ni secretos."
-      accion={<Input className="w-56" placeholder="Buscar operador, acción o IP" aria-label="Buscar en la actividad" value={buscar} onChange={(e) => setBuscar(e.target.value)} />}
+      accion={
+        <Input
+          className="w-56"
+          placeholder="Buscar operador, acción o IP"
+          aria-label="Buscar en la actividad"
+          value={buscar}
+          onChange={(e) => {
+            setBuscar(e.target.value);
+            setPagina(1);
+          }}
+        />
+      }
     >
       <Table>
         <thead>
@@ -485,14 +504,14 @@ function Actividad() {
           </tr>
         </thead>
         <tbody>
-          {lista?.length === 0 && (
+          {datos?.eventos.length === 0 && (
             <tr>
               <Td colSpan={5} className="py-8 text-center text-muted-foreground">
                 No hay actividad que coincida.
               </Td>
             </tr>
           )}
-          {lista?.map((e) => (
+          {datos?.eventos.map((e) => (
             <tr key={e.id}>
               <Td className="whitespace-nowrap text-muted-foreground">{fecha(e.fecha)}</Td>
               <Td className="font-medium">{e.operador}</Td>
@@ -510,6 +529,44 @@ function Actividad() {
           ))}
         </tbody>
       </Table>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 text-sm">
+        <span className="text-muted-foreground" aria-live="polite">
+          {datos && datos.total > 0 ? `${desde}–${hasta} de ${datos.total}` : "Sin resultados"}
+        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-2 text-muted-foreground">
+            Por página
+            <select
+              className={selector + " w-20"}
+              value={tamano}
+              onChange={(e) => {
+                setTamano(Number(e.target.value));
+                setPagina(1);
+              }}
+            >
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+          </label>
+          <Button size="sm" variant="outline" disabled={!datos || datos.pagina <= 1} onClick={() => setPagina(1)}>
+            Primera
+          </Button>
+          <Button size="sm" variant="outline" disabled={!datos || datos.pagina <= 1} onClick={() => setPagina(pagina - 1)}>
+            Anterior
+          </Button>
+          <span className="whitespace-nowrap px-1">
+            Página {datos?.pagina ?? 1} de {datos?.paginas ?? 1}
+          </span>
+          <Button size="sm" variant="outline" disabled={!datos || datos.pagina >= datos.paginas} onClick={() => setPagina(pagina + 1)}>
+            Siguiente
+          </Button>
+          <Button size="sm" variant="outline" disabled={!datos || datos.pagina >= datos.paginas} onClick={() => setPagina(datos!.paginas)}>
+            Última
+          </Button>
+        </div>
+      </div>
     </Seccion>
   );
 }

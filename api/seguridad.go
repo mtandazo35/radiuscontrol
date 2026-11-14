@@ -532,16 +532,35 @@ func (a *App) revocarSesion(w http.ResponseWriter, r *http.Request, op *Operador
 
 func (a *App) listarAuditoria(w http.ResponseWriter, r *http.Request, _ *Operador) error {
 	q := r.URL.Query()
-	limite, _ := strconv.Atoi(q.Get("limite"))
-	if limite <= 0 || limite > 500 {
-		limite = 150
+	tamano, _ := strconv.Atoi(q.Get("tamano"))
+	if tamano <= 0 || tamano > 100 {
+		tamano = 25
+	}
+	pagina, _ := strconv.Atoi(q.Get("pagina"))
+	if pagina < 1 {
+		pagina = 1
 	}
 	buscar := strings.TrimSpace(q.Get("buscar"))
-	filas, err := a.db.Query(r.Context(), `SELECT id, fecha, operador, ip, accion, objeto, detalle::text
-		FROM auditoria
-		WHERE $1 = '' OR operador ILIKE '%' || $1 || '%' OR accion ILIKE '%' || $1 || '%'
-		   OR objeto ILIKE '%' || $1 || '%' OR ip LIKE $1 || '%'
-		ORDER BY id DESC LIMIT $2`, buscar, limite)
+	const filtro = `$1 = '' OR operador ILIKE '%' || $1 || '%' OR accion ILIKE '%' || $1 || '%'
+		OR objeto ILIKE '%' || $1 || '%' OR ip LIKE $1 || '%'`
+
+	ctx := r.Context()
+	var total int
+	if err := a.db.QueryRow(ctx, `SELECT count(*) FROM auditoria WHERE `+filtro, buscar).Scan(&total); err != nil {
+		return err
+	}
+	paginas := (total + tamano - 1) / tamano
+	if paginas < 1 {
+		paginas = 1
+	}
+	// Una página más allá del final se corrige a la última.
+	if pagina > paginas {
+		pagina = paginas
+	}
+
+	filas, err := a.db.Query(ctx, `SELECT id, fecha, operador, ip, accion, objeto, detalle::text
+		FROM auditoria WHERE `+filtro+` ORDER BY id DESC LIMIT $2 OFFSET $3`,
+		buscar, tamano, (pagina-1)*tamano)
 	if err != nil {
 		return err
 	}
@@ -566,6 +585,8 @@ func (a *App) listarAuditoria(w http.ResponseWriter, r *http.Request, _ *Operado
 	if err := filas.Err(); err != nil {
 		return err
 	}
-	escribirJSON(w, http.StatusOK, lista)
+	escribirJSON(w, http.StatusOK, map[string]any{
+		"eventos": lista, "total": total, "pagina": pagina, "paginas": paginas, "tamano": tamano,
+	})
 	return nil
 }

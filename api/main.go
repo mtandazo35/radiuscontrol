@@ -120,6 +120,10 @@ func main() {
 	if err := app.migrar(ctx); err != nil {
 		log.Fatalf("migraciones: %v", err)
 	}
+	// Con argumentos, el binario ejecuta una orden de consola y termina.
+	if len(os.Args) > 1 {
+		os.Exit(app.comando(ctx, os.Args[1:]))
+	}
 	if err := app.crearOperadorInicial(ctx); err != nil {
 		log.Fatalf("operador inicial: %v", err)
 	}
@@ -195,7 +199,10 @@ func (a *App) crearOperadorInicial(ctx context.Context) error {
 		return err
 	}
 	if len(clave) < 12 {
-		return fmt.Errorf("la clave inicial del operador debe tener al menos 12 caracteres")
+		// El instalador vacía el archivo tras el primer arranque para no dejar la
+		// contraseña inicial en disco.
+		log.Printf("aviso: no hay operadores ni contraseña inicial; crea uno con «radiuscontrol operador-emergencia <usuario>»")
+		return nil
 	}
 	hash, err := hashArgon2(clave)
 	if err != nil {
@@ -207,6 +214,51 @@ func (a *App) crearOperadorInicial(ctx context.Context) error {
 		log.Printf("operador inicial creado: %s", usuario)
 	}
 	return err
+}
+
+// comando atiende las órdenes de consola. Devuelve el código de salida.
+//
+//	radiuscontrol operador-emergencia <usuario>
+//
+// Crea esa cuenta como administrador, o la recupera si ya existe: contraseña
+// nueva, sin bloqueo, sin doble factor y con las sesiones cerradas. Sirve para
+// volver a entrar cuando se ha perdido el acceso. Solo puede ejecutarla quien
+// ya tiene acceso de administrador al servidor.
+func (a *App) comando(ctx context.Context, args []string) int {
+	if len(args) != 2 || args[0] != "operador-emergencia" {
+		fmt.Fprintln(os.Stderr, "uso: radiuscontrol operador-emergencia <usuario>")
+		return 2
+	}
+	usuario := args[1]
+	if !reUsuario.MatchString(usuario) {
+		fmt.Fprintln(os.Stderr, "nombre de usuario no válido")
+		return 2
+	}
+	clave := aleatorioHex(12)
+	hash, err := hashArgon2(clave)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	err = pgx.BeginFunc(ctx, a.db, func(tx pgx.Tx) error {
+		var id int64
+		if err := tx.QueryRow(ctx, `INSERT INTO operadores (usuario, clave_hash, rol) VALUES ($1, $2, $3)
+			ON CONFLICT (usuario) DO UPDATE SET clave_hash = EXCLUDED.clave_hash, rol = EXCLUDED.rol,
+				activo = true, intentos_fallidos = 0, bloqueado_hasta = NULL, clave_cambiada = now(),
+				totp_cifrado = NULL, totp_pendiente_cifrado = NULL, totp_ultimo = 0
+			RETURNING id`, usuario, hash, rolAdmin).Scan(&id); err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx, `DELETE FROM sesiones WHERE operador_id = $1`, id)
+		return err
+	})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	a.auditar(ctx, "consola del servidor", "local", "operador.acceso_de_emergencia", usuario, nil)
+	fmt.Println(clave)
+	return 0
 }
 
 func (a *App) rutas() http.Handler {

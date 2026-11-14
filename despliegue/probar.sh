@@ -13,7 +13,14 @@ API="http://127.0.0.1:8080"
 RADIUS="radiuscontrol-freeradius"
 mkdir -p "$DIR/evidencias"
 EVIDENCIA="$DIR/evidencias/evidencia-$(date +%Y%m%d-%H%M%S).txt"
-ADMIN_CLAVE="$(cat "$DIR/secrets/admin_clave")"
+# Las pruebas usan una cuenta de administrador propia, creada por la consola
+# del servidor, para no depender de la contraseña de ninguna persona.
+ADMIN_PRUEBA="admin-prueba-automatica"
+ADMIN_CLAVE="$(docker exec radiuscontrol-api radiuscontrol operador-emergencia "$ADMIN_PRUEBA" | tail -n 1)"
+if [ "${#ADMIN_CLAVE}" -lt 12 ]; then
+    echo "No se pudo crear la cuenta de pruebas." >&2
+    exit 1
+fi
 IP_PUBLICA="$(ip -4 route get 192.0.2.1 | awk '{for (i = 1; i <= NF; i++) if ($i == "src") print $(i + 1)}')"
 ROUTER_PRUEBA="prueba-automatica"
 USUARIO_PRUEBA="prueba-automatica"
@@ -137,7 +144,7 @@ anotar "$(docker exec "$RADIUS" freeradius -v | head -1)"
 anotar ""
 
 # ---------------------------------------------------------------- sesión
-api POST /api/sesion '{"usuario":"admin","clave":"clave-equivocada"}'
+api POST /api/sesion "$(jq -n --arg u "$ADMIN_PRUEBA" '{usuario:$u,clave:"clave-equivocada"}')"
 comprobar "Panel: contraseña incorrecta, 401" "$(codigo_es 401; echo $?)" "$CUERPO"
 
 api GET /api/routers
@@ -145,7 +152,7 @@ comprobar "Panel: sin sesión no se puede consultar, 401" "$(codigo_es 401; echo
 
 COOKIE="$(curl -sS -m 30 -D - -o /dev/null -X POST "$API/api/sesion" -H 'X-RC: 1' \
     -H 'Content-Type: application/json' \
-    --data "$(jq -n --arg c "$ADMIN_CLAVE" '{usuario:"admin",clave:$c}')" \
+    --data "$(jq -n --arg u "$ADMIN_PRUEBA" --arg c "$ADMIN_CLAVE" '{usuario:$u,clave:$c}')" \
     | awk -F'[=;]' 'tolower($1) ~ /^set-cookie: rc_sesion/ {print $2}' | tr -d '\r')"
 comprobar "Panel: inicio de sesión correcto" "$([ -n "$COOKIE" ]; echo $?)"
 OCULTAR+=("$COOKIE")
@@ -423,18 +430,31 @@ COOKIE="$COOKIE_ADMIN"
 api GET /api/sesiones
 MI_SESION="$(printf '%s' "$CUERPO" | jq -r '[.[] | select(.actual)][0].id')"
 api GET /api/operadores
-MI_ID="$(printf '%s' "$CUERPO" | jq -r '.[] | select(.usuario == "admin") | .id')"
+MI_ID="$(printf '%s' "$CUERPO" | jq -r ".[] | select(.usuario == \"$ADMIN_PRUEBA\") | .id")"
 api PUT "/api/operadores/$MI_ID" '{"rol":"lectura","activo":true}'
 comprobar "Operadores: el administrador no puede quitarse su propio rol, 400" "$(codigo_es 400; echo $?)" "$CUERPO"
 api DELETE "/api/operadores/$MI_ID"
 comprobar "Operadores: el administrador no puede eliminar su propia cuenta, 400" "$(codigo_es 400; echo $?)"
 
-api GET "/api/auditoria?buscar=$OPERADOR_PRUEBA"
+api GET "/api/auditoria?buscar=$OPERADOR_PRUEBA&tamano=100"
 comprobar "Actividad: quedan anotados el alta, los accesos fallidos y el doble factor" \
-    "$(for a in operador.creado sesion.fallida sesion.iniciada cuenta.doble_factor_activado cuenta.clave_cambiada; do printf '%s' "$CUERPO" | jq -e --arg a "$a" 'any(.[]; .accion == $a)' >/dev/null || exit 1; done; echo $?)" \
-    "$(printf '%s' "$CUERPO" | jq -r '[.[].accion] | unique | join(", ")')"
+    "$(for a in operador.creado sesion.fallida sesion.iniciada cuenta.doble_factor_activado cuenta.clave_cambiada; do printf '%s' "$CUERPO" | jq -e --arg a "$a" 'any(.eventos[]; .accion == $a)' >/dev/null || exit 1; done; echo $?)" \
+    "$(printf '%s' "$CUERPO" | jq -r '[.eventos[].accion] | unique | join(", ")')"
 comprobar "Actividad: el registro no contiene contraseñas ni el secreto del doble factor" \
     "$(printf '%s' "$CUERPO" | grep -q -e "$OP_CLAVE" -e "$OP_CLAVE2" -e "$TOTP_SECRETO"; [ $? -ne 0 ]; echo $?)"
+
+api GET "/api/auditoria?tamano=5&pagina=1"
+P1="$CUERPO"
+api GET "/api/auditoria?tamano=5&pagina=2"
+P2="$CUERPO"
+comprobar "Actividad: la primera página trae 5 eventos e indica el total y las páginas" \
+    "$(printf '%s' "$P1" | jq -e '(.eventos | length) == 5 and .pagina == 1 and .total > 5 and .paginas == ((.total + 4) / 5 | floor)' >/dev/null; echo $?)" \
+    "$(printf '%s' "$P1" | jq -c '{total, pagina, paginas, tamano}')"
+comprobar "Actividad: la segunda página continúa donde acaba la primera, sin repetir" \
+    "$(jq -n --argjson a "$P1" --argjson b "$P2" '($a.eventos | map(.id) | min) > ($b.eventos | map(.id) | max)' | grep -q true; echo $?)"
+api GET "/api/auditoria?tamano=5&pagina=999999"
+comprobar "Actividad: pedir una página más allá del final devuelve la última" \
+    "$(printf '%s' "$CUERPO" | jq -e '.pagina == .paginas and (.eventos | length) > 0' >/dev/null; echo $?)"
 
 api DELETE "/api/operadores/$OP_ID"
 comprobar "Operadores: eliminar la cuenta de prueba, 200" "$(codigo_es 200; echo $?)"
@@ -445,9 +465,9 @@ comprobar "El historial de versiones ya no está disponible, 404" "$(codigo_es 4
 limpiar
 aplicar
 comprobar "Limpieza: datos de prueba borrados y configuración aplicada" "$?"
-docker compose exec -T postgres psql -q -U radiuscontrol -d radiuscontrol -c     "DELETE FROM autenticaciones WHERE router_nombre LIKE '$ROUTER_PRUEBA%' OR usuario IN ('$USUARIO_PRUEBA', 'no-existe', 'DEFAULT'); DELETE FROM auditoria WHERE operador = '$OPERADOR_PRUEBA' OR objeto IN ('$OPERADOR_PRUEBA', 'Empresa de prueba') OR objeto LIKE '$ROUTER_PRUEBA%'; DELETE FROM empresas e WHERE e.nombre = 'Empresa de prueba' AND NOT EXISTS (SELECT 1 FROM routers r WHERE r.empresa_id = e.id)" >/dev/null 2>&1
 docker exec "$RADIUS" rm -f /tmp/secreto /tmp/secreto-malo /tmp/secreto-raro
 api DELETE /api/sesion
+docker compose exec -T postgres psql -q -U radiuscontrol -d radiuscontrol -c     "DELETE FROM autenticaciones WHERE router_nombre LIKE '$ROUTER_PRUEBA%' OR usuario IN ('$USUARIO_PRUEBA', 'no-existe', 'DEFAULT'); DELETE FROM operadores WHERE usuario = '$ADMIN_PRUEBA'; DELETE FROM auditoria WHERE operador IN ('$OPERADOR_PRUEBA', '$ADMIN_PRUEBA') OR objeto = '$ADMIN_PRUEBA' OR objeto IN ('$OPERADOR_PRUEBA', 'Empresa de prueba') OR objeto LIKE '$ROUTER_PRUEBA%'; DELETE FROM empresas e WHERE e.nombre = 'Empresa de prueba' AND NOT EXISTS (SELECT 1 FROM routers r WHERE r.empresa_id = e.id)" >/dev/null 2>&1
 
 anotar ""
 anotar "Evidencia: $EVIDENCIA"

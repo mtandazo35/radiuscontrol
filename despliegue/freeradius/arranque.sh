@@ -59,10 +59,17 @@ while :; do
     echo "arranque: cargando la versión ${V##*/}"
     freeradius -f -l stdout &
     PID=$!
-    sleep 2
-    if kill -0 "$PID" 2>/dev/null; then
-        informar en-marcha "${V##*/}" "$SC" "$SA"
-    fi
+    # Solo se declara «en marcha» cuando el puerto 1812/udp ya está escuchando.
+    # 0714 es 1812 en hexadecimal, que es como lo lista el núcleo.
+    INTENTOS=0
+    while kill -0 "$PID" 2>/dev/null && [ "$INTENTOS" -lt 60 ]; do
+        if grep -q ':0714 ' /proc/net/udp 2>/dev/null; then
+            informar en-marcha "${V##*/}" "$SC" "$SA"
+            break
+        fi
+        INTENTOS=$((INTENTOS + 1))
+        sleep 0.5
+    done
 
     while kill -0 "$PID" 2>/dev/null; do
         sleep 1
