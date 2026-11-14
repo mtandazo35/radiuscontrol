@@ -1,13 +1,15 @@
 import { ShieldCheck } from "lucide-react";
 import * as React from "react";
 import { Button, Card, Input, Label } from "@/components/ui";
-import { api, type Operador } from "@/lib/api";
+import { api, ErrorApi, type Operador } from "@/lib/api";
 import { useApp } from "../contexto";
 
 export default function Login() {
   const { setOperador } = useApp();
   const [usuario, setUsuario] = React.useState("");
   const [clave, setClave] = React.useState("");
+  const [codigo, setCodigo] = React.useState("");
+  const [pideCodigo, setPideCodigo] = React.useState(false);
   const [error, setError] = React.useState("");
   const [ocupado, setOcupado] = React.useState(false);
 
@@ -16,9 +18,16 @@ export default function Login() {
     setOcupado(true);
     setError("");
     try {
-      setOperador(await api<Operador>("POST", "/sesion", { usuario, clave }));
+      setOperador(await api<Operador>("POST", "/sesion", { usuario, clave, codigo: pideCodigo ? codigo : "" }));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error inesperado.");
+      if (err instanceof ErrorApi && err.datos?.requiere_codigo) {
+        // La contraseña es correcta; falta el segundo factor.
+        setError(pideCodigo ? err.message : "");
+        setPideCodigo(true);
+        setCodigo("");
+      } else {
+        setError(err instanceof Error ? err.message : "Error inesperado.");
+      }
     } finally {
       setOcupado(false);
     }
@@ -40,6 +49,22 @@ export default function Login() {
             <Label htmlFor="clave">Contraseña</Label>
             <Input id="clave" type="password" autoComplete="current-password" required value={clave} onChange={(e) => setClave(e.target.value)} />
           </div>
+          {pideCodigo && (
+            <div className="space-y-2">
+              <Label htmlFor="codigo">Código de verificación</Label>
+              <Input
+                id="codigo"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                autoFocus
+                required
+                maxLength={7}
+                placeholder="6 cifras de tu aplicación"
+                value={codigo}
+                onChange={(e) => setCodigo(e.target.value)}
+              />
+            </div>
+          )}
           {error && (
             <p role="alert" className="text-sm text-destructive">
               {error}

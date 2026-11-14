@@ -21,9 +21,11 @@ import (
 const cookieSesion = "rc_sesion"
 
 type Operador struct {
-	ID      int64  `json:"-"`
-	Usuario string `json:"usuario"`
-	Rol     string `json:"rol"`
+	ID       int64  `json:"-"`
+	SesionID int64  `json:"-"`
+	Usuario  string `json:"usuario"`
+	Rol      string `json:"rol"`
+	TOTP     bool   `json:"totp"`
 }
 
 type errHTTP struct {
@@ -108,6 +110,17 @@ func (a *App) publico(h func(http.ResponseWriter, *http.Request) error) http.Han
 	}
 }
 
+// admin exige el rol de administrador. Las cuentas de solo lectura pueden
+// consultar, pero no cambiar nada.
+func (a *App) admin(h manejador) http.HandlerFunc {
+	return a.privado(func(w http.ResponseWriter, r *http.Request, op *Operador) error {
+		if op.Rol != rolAdmin {
+			return &errHTTP{codigo: http.StatusForbidden, msg: "Tu cuenta es de solo lectura y no puede hacer cambios."}
+		}
+		return h(w, r, op)
+	})
+}
+
 type manejador func(http.ResponseWriter, *http.Request, *Operador) error
 
 func (a *App) privado(h manejador) http.HandlerFunc {
@@ -141,10 +154,10 @@ func (a *App) operadorDeSesion(r *http.Request) (*Operador, error) {
 	}
 	var op Operador
 	err = a.db.QueryRow(r.Context(), `
-		SELECT o.id, o.usuario, o.rol
+		SELECT o.id, s.id, o.usuario, o.rol, o.totp_cifrado IS NOT NULL
 		FROM sesiones s JOIN operadores o ON o.id = s.operador_id
 		WHERE s.token_hash = $1 AND s.expira > now() AND o.activo`,
-		hashToken(c.Value)).Scan(&op.ID, &op.Usuario, &op.Rol)
+		hashToken(c.Value)).Scan(&op.ID, &op.SesionID, &op.Usuario, &op.Rol, &op.TOTP)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, sinSesion
 	}
@@ -169,6 +182,7 @@ func (a *App) iniciarSesion(w http.ResponseWriter, r *http.Request) error {
 	var in struct {
 		Usuario string `json:"usuario"`
 		Clave   string `json:"clave"`
+		Codigo  string `json:"codigo"`
 	}
 	if err := leerJSON(w, r, &in); err != nil {
 		return err
@@ -177,12 +191,14 @@ func (a *App) iniciarSesion(w http.ResponseWriter, r *http.Request) error {
 	ip := ipCliente(r)
 	incorrecto := &errHTTP{codigo: http.StatusUnauthorized, msg: "Usuario o contraseña incorrectos."}
 
-	var id int64
-	var hash, rol string
+	var id, totpUltimo int64
+	var hash, rol, usuario string
 	var activo bool
 	var bloqueado *time.Time
-	err := a.db.QueryRow(ctx, `SELECT id, clave_hash, rol, activo, bloqueado_hasta
-		FROM operadores WHERE usuario = $1`, in.Usuario).Scan(&id, &hash, &rol, &activo, &bloqueado)
+	var totpCifrado []byte
+	err := a.db.QueryRow(ctx, `SELECT id, usuario, clave_hash, rol, activo, bloqueado_hasta, totp_cifrado, totp_ultimo
+		FROM operadores WHERE lower(usuario) = lower($1)`, in.Usuario).
+		Scan(&id, &usuario, &hash, &rol, &activo, &bloqueado, &totpCifrado, &totpUltimo)
 	if errors.Is(err, pgx.ErrNoRows) {
 		verificarArgon2(in.Clave, a.senuelo)
 		a.auditar(ctx, in.Usuario, ip, "sesion.fallida", "operador", map[string]any{"motivo": "usuario desconocido"})
@@ -192,20 +208,46 @@ func (a *App) iniciarSesion(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	if bloqueado != nil && bloqueado.After(time.Now()) {
-		a.auditar(ctx, in.Usuario, ip, "sesion.fallida", "operador", map[string]any{"motivo": "cuenta bloqueada"})
+		a.auditar(ctx, usuario, ip, "sesion.fallida", "operador", map[string]any{"motivo": "cuenta bloqueada"})
 		return &errHTTP{codigo: http.StatusTooManyRequests,
 			msg: "La cuenta está bloqueada temporalmente por intentos fallidos. Inténtalo más tarde."}
 	}
-	if !verificarArgon2(in.Clave, hash) || !activo {
-		if _, err := a.db.Exec(ctx, `UPDATE operadores SET
+	fallo := func(motivo string) error {
+		_, err := a.db.Exec(ctx, `UPDATE operadores SET
 			intentos_fallidos = intentos_fallidos + 1,
-			bloqueado_hasta = CASE WHEN intentos_fallidos + 1 >= 5
-				THEN now() + interval '15 minutes' ELSE bloqueado_hasta END
-			WHERE id = $1`, id); err != nil {
+			bloqueado_hasta = CASE WHEN intentos_fallidos + 1 >= $2
+				THEN now() + make_interval(mins => $3) ELSE bloqueado_hasta END
+			WHERE id = $1`, id, intentosTope, minutosBloque)
+		a.auditar(ctx, usuario, ip, "sesion.fallida", "operador", map[string]any{"motivo": motivo})
+		return err
+	}
+	if !verificarArgon2(in.Clave, hash) || !activo {
+		if err := fallo("contraseña incorrecta"); err != nil {
 			return err
 		}
-		a.auditar(ctx, in.Usuario, ip, "sesion.fallida", "operador", map[string]any{"motivo": "contraseña incorrecta"})
 		return incorrecto
+	}
+
+	// Segundo factor, si la cuenta lo tiene activado.
+	contador := totpUltimo
+	if totpCifrado != nil {
+		pideCodigo := map[string]any{"requiere_codigo": true}
+		if strings.TrimSpace(in.Codigo) == "" {
+			return &errHTTP{codigo: http.StatusUnauthorized,
+				msg: "Introduce el código de tu aplicación de autenticación.", extra: pideCodigo}
+		}
+		secreto, err := a.cifra.Descifrar(totpCifrado, dominioTOTP)
+		if err != nil {
+			return err
+		}
+		c, ok := verificarTOTP(secreto, in.Codigo, time.Now(), totpUltimo)
+		if !ok {
+			if err := fallo("código incorrecto"); err != nil {
+				return err
+			}
+			return &errHTTP{codigo: http.StatusUnauthorized, msg: "El código no es correcto.", extra: pideCodigo}
+		}
+		contador = c
 	}
 
 	b := make([]byte, 32)
@@ -215,8 +257,8 @@ func (a *App) iniciarSesion(w http.ResponseWriter, r *http.Request) error {
 	token := hex.EncodeToString(b)
 	expira := time.Now().Add(12 * time.Hour)
 	err = pgx.BeginFunc(ctx, a.db, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, `UPDATE operadores SET intentos_fallidos = 0, bloqueado_hasta = NULL
-			WHERE id = $1`, id); err != nil {
+		if _, err := tx.Exec(ctx, `UPDATE operadores SET intentos_fallidos = 0, bloqueado_hasta = NULL,
+			ultimo_acceso = now(), totp_ultimo = $2 WHERE id = $1`, id, contador); err != nil {
 			return err
 		}
 		if _, err := tx.Exec(ctx, `DELETE FROM sesiones WHERE expira < now()`); err != nil {
@@ -233,8 +275,8 @@ func (a *App) iniciarSesion(w http.ResponseWriter, r *http.Request) error {
 		Name: cookieSesion, Value: token, Path: "/", Expires: expira,
 		HttpOnly: true, Secure: true, SameSite: http.SameSiteStrictMode,
 	})
-	a.auditar(ctx, in.Usuario, ip, "sesion.iniciada", "operador", nil)
-	escribirJSON(w, http.StatusOK, Operador{Usuario: in.Usuario, Rol: rol})
+	a.auditar(ctx, usuario, ip, "sesion.iniciada", "operador", map[string]any{"doble_factor": totpCifrado != nil})
+	escribirJSON(w, http.StatusOK, Operador{Usuario: usuario, Rol: rol, TOTP: totpCifrado != nil})
 	return nil
 }
 

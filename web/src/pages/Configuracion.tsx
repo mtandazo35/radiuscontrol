@@ -1,6 +1,5 @@
 import * as React from "react";
-import { Badge, Button, Card, Table, Td, Th } from "@/components/ui";
-import { api, type Version } from "@/lib/api";
+import { Badge, Card } from "@/components/ui";
 import { fecha, huellaCorta } from "@/lib/utils";
 import { useApp } from "../contexto";
 
@@ -26,38 +25,7 @@ const textoFirewall: Record<string, string> = {
 };
 
 export default function Configuracion() {
-  const { estado, refrescarEstado, avisar, avisarError, confirmar } = useApp();
-  const [versiones, setVersiones] = React.useState<Version[] | null>(null);
-
-  const cargar = React.useCallback(async () => {
-    try {
-      setVersiones(await api<Version[]>("GET", "/versiones"));
-    } catch (e) {
-      avisarError(e);
-    }
-  }, [avisarError]);
-
-  React.useEffect(() => {
-    cargar();
-  }, [cargar, estado?.activa?.id]);
-
-  const volver = async (v: Version) => {
-    const ok = await confirmar(
-      `Volver a la versión ${v.id}`,
-      "FreeRADIUS volverá a usar esa configuración tal como se aplicó. Los datos del panel no cambian: el próximo cambio que guardes volverá a aplicar los datos del panel.",
-      "Volver a esta versión",
-    );
-    if (!ok) return;
-    try {
-      await api("POST", `/versiones/${v.id}/activar`);
-      await refrescarEstado();
-      await cargar();
-      avisar({ titulo: "Versión reactivada", mensaje: `FreeRADIUS carga la versión ${v.id} en unos segundos.` });
-    } catch (e) {
-      avisarError(e);
-    }
-  };
-
+  const { estado } = useApp();
   const fr = estado?.freeradius;
   const fw = estado?.firewall;
   const activa = estado?.activa;
@@ -67,13 +35,26 @@ export default function Configuracion() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Configuración</h1>
         <p className="text-sm text-muted-foreground">
-          Lo que el panel tiene guardado, lo que se aplicó, lo que FreeRADIUS declara tener cargado y lo que el firewall deja pasar.
+          Lo que el panel tiene guardado, lo que se aplicó, lo que FreeRADIUS declara tener cargado y lo que el firewall
+          deja pasar. Los cambios se aplican solos a los pocos segundos de guardarlos.
         </p>
       </div>
 
+      {estado?.cambios_pendientes && estado.ultimo_fallo && (
+        <Card className="border-destructive/50 p-4">
+          <h2 className="text-sm font-semibold text-destructive">El último cambio no se pudo aplicar</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            FreeRADIUS sigue funcionando con la configuración anterior. Este es el motivo:
+          </p>
+          <pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap rounded-md border bg-muted p-3 font-mono text-xs">
+            {estado.ultimo_fallo}
+          </pre>
+        </Card>
+      )}
+
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Card className="p-4">
-          <h2 className="mb-3 text-sm font-semibold">Deseado (panel)</h2>
+          <h2 className="mb-3 text-sm font-semibold">Guardado en el panel</h2>
           <dl className="space-y-3">
             <Dato titulo="Routers y usuarios activos">
               {estado ? `${estado.deseado.routers} routers, ${estado.deseado.usuarios} usuarios` : "—"}
@@ -84,7 +65,11 @@ export default function Configuracion() {
               </span>
             </Dato>
             <Dato titulo="Situación">
-              {estado?.cambios_pendientes ? <Badge variant="warning">Distinto de lo aplicado</Badge> : <Badge variant="success">Igual a lo aplicado</Badge>}
+              {estado?.cambios_pendientes ? (
+                <Badge variant="warning">Distinto de lo aplicado</Badge>
+              ) : (
+                <Badge variant="success">Igual a lo aplicado</Badge>
+              )}
             </Dato>
           </dl>
         </Card>
@@ -92,7 +77,7 @@ export default function Configuracion() {
         <Card className="p-4">
           <h2 className="mb-3 text-sm font-semibold">Aplicado</h2>
           <dl className="space-y-3">
-            <Dato titulo="Versión activa">{activa ? `Versión ${activa.id}, ${fecha(activa.creada)}` : "Ninguna todavía"}</Dato>
+            <Dato titulo="Última aplicación">{activa ? fecha(activa.creada) : "Ninguna todavía"}</Dato>
             <Dato titulo="Huella">
               <span className="font-mono text-xs">
                 {huellaCorta(activa?.sha_clients)} · {huellaCorta(activa?.sha_authorize)}
@@ -150,57 +135,6 @@ export default function Configuracion() {
           </dl>
         </Card>
       </div>
-
-      <Card>
-        <h2 className="px-4 pt-4 text-sm font-semibold">Historial de versiones</h2>
-        <Table className="mt-2">
-          <thead>
-            <tr>
-              <Th>Versión</Th>
-              <Th>Fecha</Th>
-              <Th>Operador</Th>
-              <Th>Contenido</Th>
-              <Th>Resultado</Th>
-              <Th className="text-right">Acciones</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {versiones?.length === 0 && (
-              <tr>
-                <Td colSpan={6} className="py-10 text-center text-muted-foreground">
-                  Todavía no se ha aplicado ninguna configuración.
-                </Td>
-              </tr>
-            )}
-            {versiones?.map((v) => (
-              <tr key={v.id}>
-                <Td className="font-medium">{v.id}</Td>
-                <Td className="whitespace-nowrap text-muted-foreground">{fecha(v.creada)}</Td>
-                <Td>{v.operador}</Td>
-                <Td className="whitespace-nowrap text-muted-foreground">
-                  {v.routers} routers, {v.usuarios} usuarios
-                </Td>
-                <Td>
-                  {v.activa ? (
-                    <Badge variant="success">Activa</Badge>
-                  ) : v.estado === "aplicada" ? (
-                    <Badge variant="muted">Aplicada</Badge>
-                  ) : (
-                    <Badge variant="destructive">Rechazada</Badge>
-                  )}
-                </Td>
-                <Td className="text-right">
-                  {!v.activa && v.estado === "aplicada" && (
-                    <Button size="sm" variant="outline" onClick={() => volver(v)}>
-                      Volver a esta versión
-                    </Button>
-                  )}
-                </Td>
-              </tr>
-            ))}
-          </tbody>
-        </Table>
-      </Card>
     </div>
   );
 }

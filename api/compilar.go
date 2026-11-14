@@ -368,6 +368,10 @@ func (a *App) aplicarDeseado(ctx context.Context, operador, ip string) (id int64
 	if err := a.marcarActiva(ctx, id); err != nil {
 		return id, false, "", err
 	}
+	// Solo se conservan las últimas versiones; no hay historial que consultar.
+	if _, err := a.db.Exec(ctx, `DELETE FROM versiones_config WHERE NOT activa AND id < $1 - 10`, id); err != nil {
+		log.Printf("no se pudieron limpiar versiones antiguas: %v", err)
+	}
 	a.auditar(ctx, operador, ip, "config.aplicada", fmt.Sprintf("versión %d", id),
 		map[string]any{"routers": c.Routers, "usuarios": c.Usuarios})
 	return id, true, "", nil
@@ -413,35 +417,6 @@ func (a *App) programarAplicar(operador string) {
 	})
 }
 
-func (a *App) activarVersion(w http.ResponseWriter, r *http.Request, op *Operador) error {
-	id, err := idRuta(r)
-	if err != nil {
-		return err
-	}
-	a.aplicarMu.Lock()
-	defer a.aplicarMu.Unlock()
-	ctx := r.Context()
-
-	c, err := a.descifrarVersion(ctx, id)
-	if err != nil {
-		return err
-	}
-	if salida, err := a.validar(ctx, c); err != nil {
-		return &errHTTP{codigo: http.StatusUnprocessableEntity,
-			msg:   "FreeRADIUS rechazó esa versión. No se cambió nada.",
-			extra: map[string]any{"detalle": salida}}
-	}
-	if err := a.activar(id, c); err != nil {
-		return err
-	}
-	if err := a.marcarActiva(ctx, id); err != nil {
-		return err
-	}
-	a.auditar(ctx, op.Usuario, ipCliente(r), "config.version_reactivada", fmt.Sprintf("versión %d", id), nil)
-	escribirJSON(w, http.StatusOK, map[string]any{"version": id})
-	return nil
-}
-
 type Version struct {
 	ID           int64     `json:"id"`
 	Creada       time.Time `json:"creada"`
@@ -464,28 +439,6 @@ func leerVersion(fila pgx.Row) (*Version, error) {
 		return nil, err
 	}
 	return &v, nil
-}
-
-func (a *App) listarVersiones(w http.ResponseWriter, r *http.Request, _ *Operador) error {
-	filas, err := a.db.Query(r.Context(),
-		`SELECT `+columnasVersion+` FROM versiones_config ORDER BY id DESC LIMIT 30`)
-	if err != nil {
-		return err
-	}
-	defer filas.Close()
-	lista := []*Version{}
-	for filas.Next() {
-		v, err := leerVersion(filas)
-		if err != nil {
-			return err
-		}
-		lista = append(lista, v)
-	}
-	if err := filas.Err(); err != nil {
-		return err
-	}
-	escribirJSON(w, http.StatusOK, lista)
-	return nil
 }
 
 // Cargado es lo que el contenedor de FreeRADIUS declara tener en marcha.

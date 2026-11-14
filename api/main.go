@@ -212,7 +212,7 @@ func (a *App) crearOperadorInicial(ctx context.Context) error {
 func (a *App) rutas() http.Handler {
 	m := http.NewServeMux()
 	cambia := func(h manejador) http.HandlerFunc {
-		return a.privado(func(w http.ResponseWriter, r *http.Request, op *Operador) error {
+		return a.admin(func(w http.ResponseWriter, r *http.Request, op *Operador) error {
 			err := h(w, r, op)
 			if err == nil {
 				a.programarAplicar(op.Usuario)
@@ -240,8 +240,22 @@ func (a *App) rutas() http.Handler {
 	m.HandleFunc("POST /api/usuarios/{id}/clave", cambia(a.cambiarClaveUsuario))
 
 	m.HandleFunc("GET /api/estado", a.privado(a.verEstado))
-	m.HandleFunc("POST /api/aplicar", a.privado(a.aplicar))
-	m.HandleFunc("GET /api/versiones", a.privado(a.listarVersiones))
-	m.HandleFunc("POST /api/versiones/{id}/activar", a.privado(a.activarVersion))
+	m.HandleFunc("POST /api/aplicar", a.admin(a.aplicar))
+
+	// Acceso y seguridad del panel.
+	m.HandleFunc("POST /api/cuenta/clave", a.privado(a.cambiarMiClave))
+	m.HandleFunc("POST /api/cuenta/totp", a.privado(a.iniciarTOTP))
+	m.HandleFunc("POST /api/cuenta/totp/confirmar", a.privado(a.confirmarTOTP))
+	m.HandleFunc("POST /api/cuenta/totp/desactivar", a.privado(a.desactivarTOTP))
+	m.HandleFunc("GET /api/sesiones", a.privado(a.listarSesiones))
+	m.HandleFunc("DELETE /api/sesiones/{id}", a.privado(a.revocarSesion))
+	m.HandleFunc("GET /api/operadores", a.admin(a.listarOperadores))
+	m.HandleFunc("POST /api/operadores", a.admin(a.crearOperador))
+	m.HandleFunc("PUT /api/operadores/{id}", a.admin(a.editarOperador))
+	m.HandleFunc("DELETE /api/operadores/{id}", a.admin(a.borrarOperador))
+	m.HandleFunc("POST /api/operadores/{id}/clave", a.admin(a.restablecerOperador))
+	m.HandleFunc("POST /api/operadores/{id}/desbloquear", a.admin(a.desbloquearOperador))
+	m.HandleFunc("DELETE /api/operadores/{id}/totp", a.admin(a.quitarTOTPOperador))
+	m.HandleFunc("GET /api/auditoria", a.admin(a.listarAuditoria))
 	return m
 }

@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestHashNTVectorConocido(t *testing.T) {
@@ -200,6 +201,45 @@ func TestRenderizarEsDeterminista(t *testing.T) {
 	usuarios[0].Grupo = "read"
 	if renderizar(clientes, usuarios).ShaAuthorize == a.ShaAuthorize {
 		t.Fatal("un cambio de grupo debe cambiar la huella")
+	}
+}
+
+func TestTOTPVectoresRFC6238(t *testing.T) {
+	secreto := []byte("12345678901234567890")
+	// Vectores de la RFC 6238 (SHA-1), recortados a 6 cifras.
+	casos := map[int64]string{59: "287082", 1111111109: "081804", 1234567890: "005924", 2000000000: "279037"}
+	for instante, esperado := range casos {
+		if got := codigoTOTP(secreto, uint64(instante/periodoTOTP)); got != esperado {
+			t.Errorf("instante %d: %s, se esperaba %s", instante, got, esperado)
+		}
+	}
+}
+
+func TestTOTPVentanaYRepeticion(t *testing.T) {
+	secreto := []byte("12345678901234567890")
+	ahora := time.Unix(1111111109, 0)
+	actual := ahora.Unix() / periodoTOTP
+
+	contador, ok := verificarTOTP(secreto, "081804", ahora, 0)
+	if !ok || contador != actual {
+		t.Fatalf("el código del periodo actual debe aceptarse (contador %d, ok %v)", contador, ok)
+	}
+	if _, ok := verificarTOTP(secreto, "081804", ahora, contador); ok {
+		t.Fatal("un código ya usado no debe aceptarse otra vez")
+	}
+	if _, ok := verificarTOTP(secreto, " 081 804 ", ahora, 0); !ok {
+		t.Fatal("deben tolerarse los espacios al escribir el código")
+	}
+	if _, ok := verificarTOTP(secreto, codigoTOTP(secreto, uint64(actual-1)), ahora, 0); !ok {
+		t.Fatal("el código del periodo anterior debe aceptarse")
+	}
+	if _, ok := verificarTOTP(secreto, codigoTOTP(secreto, uint64(actual-3)), ahora, 0); ok {
+		t.Fatal("un código de hace tres periodos no debe aceptarse")
+	}
+	for _, malo := range []string{"", "12345", "1234567", "abcdef"} {
+		if _, ok := verificarTOTP(secreto, malo, ahora, 0); ok {
+			t.Errorf("el código %q no debe aceptarse", malo)
+		}
 	}
 }
 

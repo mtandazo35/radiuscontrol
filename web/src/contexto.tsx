@@ -15,6 +15,7 @@ interface Contexto {
   setOperador: (o: Operador | null) => void;
   estado: Estado | null;
   refrescarEstado: () => Promise<void>;
+  refrescarOperador: () => Promise<void>;
   // Todos los avisos son modales: nada de franjas que mueven la página.
   avisar: (a: Omit<Aviso, "confirmar">) => void;
   avisarError: (e: unknown) => void;
@@ -64,12 +65,21 @@ export function ProveedorApp({ children }: { children: React.ReactNode }) {
     return () => window.clearInterval(t);
   }, [operador, refrescarEstado]);
 
+  const refrescarOperador = React.useCallback(async () => {
+    try {
+      setOperador(await api<Operador>("GET", "/sesion"));
+    } catch {
+      // Si la sesión caducó, el aviso global ya la cierra.
+    }
+  }, []);
+
   const valor = React.useMemo<Contexto>(
     () => ({
       operador,
       setOperador,
       estado,
       refrescarEstado,
+      refrescarOperador,
       avisar: (a) => {
         setCopiado(false);
         setAviso(a);
@@ -85,7 +95,7 @@ export function ProveedorApp({ children }: { children: React.ReactNode }) {
       confirmar: (titulo, mensaje, texto, peligro) =>
         new Promise<boolean>((resolver) => setAviso({ titulo, mensaje, confirmar: { texto, peligro, resolver } })),
     }),
-    [operador, estado, refrescarEstado],
+    [operador, estado, refrescarEstado, refrescarOperador],
   );
 
   const cerrar = (ok: boolean) => {

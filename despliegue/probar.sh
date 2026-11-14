@@ -17,6 +17,29 @@ ADMIN_CLAVE="$(cat "$DIR/secrets/admin_clave")"
 IP_PUBLICA="$(ip -4 route get 192.0.2.1 | awk '{for (i = 1; i <= NF; i++) if ($i == "src") print $(i + 1)}')"
 ROUTER_PRUEBA="prueba-automatica"
 USUARIO_PRUEBA="prueba-automatica"
+OPERADOR_PRUEBA="operador-prueba-automatica"
+
+# totp <secreto en base32>: código de 6 cifras del periodo actual (RFC 6238).
+totp() {
+    local clave contador mac pos valor
+    clave="$(printf '%s' "$1" | base32 -d | od -An -tx1 | tr -d ' \n')"
+    contador="$(printf '%016x' $(( $(date +%s) / 30 )))"
+    mac="$(printf "$(printf '%s' "$contador" | sed 's/../\\x&/g')" | openssl dgst -sha1 -mac HMAC -macopt "hexkey:$clave" -r | cut -d' ' -f1)"
+    pos=$(( 16#${mac:39:1} ))
+    valor=$(( 16#${mac:$((pos * 2)):8} & 0x7fffffff ))
+    printf '%06d' $(( valor % 1000000 ))
+}
+
+# entrar <usuario> <clave> [código]: deja el código HTTP en CODIGO y la sesión en SESION
+entrar() {
+    local cabeceras
+    cabeceras="$(mktemp)"
+    CUERPO="$(curl -sS -m 30 -D "$cabeceras" -X POST "$API/api/sesion" -H 'X-RC: 1' -H 'Content-Type: application/json' \
+        --data "$(jq -n --arg u "$1" --arg c "$2" --arg k "${3:-}" '{usuario:$u,clave:$c,codigo:$k}')")"
+    CODIGO="$(awk 'NR == 1 {print $2}' "$cabeceras")"
+    SESION="$(awk -F'[=;]' 'tolower($1) ~ /^set-cookie: rc_sesion/ {print $2}' "$cabeceras" | tr -d '\r')"
+    rm -f "$cabeceras"
+}
 # Secretos con caracteres delicados. Las barras invertidas van en octal (\134)
 # y las comillas en \047 y \042 para que no haya duda de qué se envía.
 SECRETOS_RAROS=(
@@ -305,10 +328,7 @@ done
 S="$(radius 127.0.0.1 /tmp/secreto-raro "$PAP_OK")"
 comprobar "Secreto: un intento rechazado no altera el secreto en uso" "$(printf '%s' "$S" | grep -q 'Received Access-Accept'; echo $?)"
 
-# ---------------------------------------------------------------- grupo, suspensión y vuelta atrás
-api GET /api/estado
-VERSION_BUENA="$(printf '%s' "$CUERPO" | jq -r '.activa.id')"
-
+# ---------------------------------------------------------------- grupo y suspensión
 api PUT "/api/usuarios/$USUARIO_ID" '{"nombre_completo":"Prueba automática","grupo":"read","activo":true}'
 aplicar
 S="$(radius 127.0.0.1 /tmp/secreto-raro "$PAP_OK")"
@@ -319,19 +339,6 @@ aplicar
 S="$(radius 127.0.0.1 /tmp/secreto-raro "$PAP_OK")"
 comprobar "Suspensión: un usuario suspendido deja de entrar" "$(printf '%s' "$S" | grep -q 'Received Access-Reject'; echo $?)"
 
-api POST "/api/versiones/$VERSION_BUENA/activar"
-comprobar "Vuelta atrás: reactivar la versión $VERSION_BUENA, 200" "$(codigo_es 200; echo $?)"
-for _ in $(seq 1 30); do
-    api GET /api/estado
-    [ "$(printf '%s' "$CUERPO" | jq -r '.sincronizado')" = "true" ] && break
-    sleep 1
-done
-S="$(radius 127.0.0.1 /tmp/secreto-raro "$PAP_OK")"
-comprobar "Vuelta atrás: el usuario vuelve a entrar con el grupo full" "$(printf '%s' "$S" | grep -q 'Mikrotik-Group = "full"'; echo $?)"
-api GET /api/estado
-comprobar "Vuelta atrás: el panel avisa de que lo aplicado difiere de lo deseado" \
-    "$([ "$(printf '%s' "$CUERPO" | jq -r .cambios_pendientes)" = "true" ]; echo $?)"
-
 api PUT "/api/routers/$ROUTER_ID" "$(jq -n --arg n "$ROUTER_PRUEBA" '{nombre:$n,empresa:"Empresa de prueba",redes:["127.0.0.1"],activo:false}')"
 aplicar
 S="$(radius 127.0.0.1 /tmp/secreto-raro "$PAP_OK")"
@@ -341,11 +348,104 @@ comprobar "Firewall: las demás reglas del servidor no cambian" \
     "$([ "$(ufw show added | grep -v "comment 'radiuscontrol'")" = "$OTRAS_REGLAS" ]; echo $?)"
 comprobar "Suspensión: un router suspendido deja de recibir respuesta" "$(printf '%s' "$S" | grep -q 'Received'; [ $? -ne 0 ]; echo $?)"
 
+# ---------------------------------------------------------------- acceso y seguridad del panel
+COOKIE_ADMIN="$COOKIE"
+api GET /api/operadores
+for id in $(printf '%s' "$CUERPO" | jq -r ".[] | select(.usuario == \"$OPERADOR_PRUEBA\") | .id"); do
+    api DELETE "/api/operadores/$id"
+done
+
+api POST /api/operadores "$(jq -n --arg u "$OPERADOR_PRUEBA" '{usuario:$u,rol:"lectura"}')"
+comprobar "Seguridad: alta de un operador de solo lectura, 201" "$(codigo_es 201; echo $?)"
+OP_ID="$(printf '%s' "$CUERPO" | jq -r '.operador.id')"
+OP_CLAVE="$(printf '%s' "$CUERPO" | jq -r '.clave_generada')"
+OCULTAR+=("$OP_CLAVE")
+
+entrar "$OPERADOR_PRUEBA" "$OP_CLAVE"
+comprobar "Seguridad: el operador nuevo inicia sesión" "$([ "$CODIGO" = 200 ] && [ -n "$SESION" ]; echo $?)"
+COOKIE="$SESION"
+OCULTAR+=("$SESION")
+api GET /api/routers
+comprobar "Seguridad: la cuenta de solo lectura puede consultar, 200" "$(codigo_es 200; echo $?)"
+api POST /api/routers "$(jq -n --arg n "$ROUTER_PRUEBA-5" '{nombre:$n,empresa:"Empresa de prueba",redes:["192.0.2.55"]}')"
+comprobar "Seguridad: la cuenta de solo lectura no puede crear routers, 403" "$(codigo_es 403; echo $?)" "$CUERPO"
+api GET /api/operadores
+comprobar "Seguridad: la cuenta de solo lectura no ve los operadores, 403" "$(codigo_es 403; echo $?)"
+api GET /api/auditoria
+comprobar "Seguridad: la cuenta de solo lectura no ve el registro de actividad, 403" "$(codigo_es 403; echo $?)"
+
+api POST /api/cuenta/clave "$(jq -n --arg n "otra-clave-larga-1" '{actual:"equivocada",nueva:$n}')"
+comprobar "Cuenta: cambiar la contraseña con la actual equivocada se rechaza, 400" "$(codigo_es 400; echo $?)"
+api POST /api/cuenta/clave "$(jq -n --arg a "$OP_CLAVE" '{actual:$a,nueva:"corta"}')"
+comprobar "Cuenta: una contraseña nueva demasiado corta se rechaza, 400" "$(codigo_es 400; echo $?)" "$CUERPO"
+OP_CLAVE2="clave-nueva-$(openssl rand -hex 6)"
+OCULTAR+=("$OP_CLAVE2")
+api POST /api/cuenta/clave "$(jq -n --arg a "$OP_CLAVE" --arg n "$OP_CLAVE2" '{actual:$a,nueva:$n}')"
+comprobar "Cuenta: cambio de contraseña correcto, 200" "$(codigo_es 200; echo $?)"
+entrar "$OPERADOR_PRUEBA" "$OP_CLAVE"
+comprobar "Cuenta: la contraseña anterior deja de servir, 401" "$([ "$CODIGO" = 401 ]; echo $?)"
+
+api POST /api/cuenta/totp
+comprobar "Doble factor: se genera el secreto para la aplicación, 200" "$(codigo_es 200; echo $?)"
+TOTP_SECRETO="$(printf '%s' "$CUERPO" | jq -r '.secreto')"
+OCULTAR+=("$TOTP_SECRETO")
+api POST /api/cuenta/totp/confirmar '{"codigo":"000000"}'
+comprobar "Doble factor: un código equivocado no lo activa, 400" "$(codigo_es 400; echo $?)"
+api POST /api/cuenta/totp/confirmar "$(jq -n --arg c "$(totp "$TOTP_SECRETO")" '{codigo:$c}')"
+comprobar "Doble factor: el código correcto lo activa, 200" "$(codigo_es 200; echo $?)" "$CUERPO"
+
+entrar "$OPERADOR_PRUEBA" "$OP_CLAVE2"
+comprobar "Doble factor: sin código no se entra y el panel lo pide, 401" \
+    "$([ "$CODIGO" = 401 ] && [ "$(printf '%s' "$CUERPO" | jq -r .requiere_codigo)" = "true" ]; echo $?)"
+entrar "$OPERADOR_PRUEBA" "$OP_CLAVE2" "000000"
+comprobar "Doble factor: con un código equivocado no se entra, 401" "$([ "$CODIGO" = 401 ] && [ -z "$SESION" ]; echo $?)"
+# El código del periodo en que se activó ya está gastado: se espera al siguiente.
+sleep $(( 31 - $(date +%s) % 30 ))
+CODIGO_TOTP="$(totp "$TOTP_SECRETO")"
+entrar "$OPERADOR_PRUEBA" "$OP_CLAVE2" "$CODIGO_TOTP"
+comprobar "Doble factor: con contraseña y código correctos se entra, 200" "$([ "$CODIGO" = 200 ] && [ -n "$SESION" ]; echo $?)"
+SESION_TOTP="$SESION"
+OCULTAR+=("$SESION_TOTP")
+entrar "$OPERADOR_PRUEBA" "$OP_CLAVE2" "$CODIGO_TOTP"
+comprobar "Doble factor: el mismo código no sirve dos veces, 401" "$([ "$CODIGO" = 401 ] && [ -z "$SESION" ]; echo $?)"
+
+COOKIE="$COOKIE_ADMIN"
+api GET /api/sesiones
+ID_SESION="$(printf '%s' "$CUERPO" | jq -r "[.[] | select(.operador == \"$OPERADOR_PRUEBA\")][0].id")"
+comprobar "Sesiones: el administrador ve las sesiones abiertas del operador" "$([ "$ID_SESION" != "null" ] && [ -n "$ID_SESION" ]; echo $?)"
+api PUT "/api/operadores/$OP_ID" '{"rol":"lectura","activo":false}'
+comprobar "Operadores: suspender una cuenta, 200" "$(codigo_es 200; echo $?)"
+COOKIE="$SESION_TOTP"
+api GET /api/routers
+comprobar "Operadores: al suspender la cuenta, su sesión abierta deja de valer, 401" "$(codigo_es 401; echo $?)"
+COOKIE="$COOKIE_ADMIN"
+
+api GET /api/sesiones
+MI_SESION="$(printf '%s' "$CUERPO" | jq -r '[.[] | select(.actual)][0].id')"
+api GET /api/operadores
+MI_ID="$(printf '%s' "$CUERPO" | jq -r '.[] | select(.usuario == "admin") | .id')"
+api PUT "/api/operadores/$MI_ID" '{"rol":"lectura","activo":true}'
+comprobar "Operadores: el administrador no puede quitarse su propio rol, 400" "$(codigo_es 400; echo $?)" "$CUERPO"
+api DELETE "/api/operadores/$MI_ID"
+comprobar "Operadores: el administrador no puede eliminar su propia cuenta, 400" "$(codigo_es 400; echo $?)"
+
+api GET "/api/auditoria?buscar=$OPERADOR_PRUEBA"
+comprobar "Actividad: quedan anotados el alta, los accesos fallidos y el doble factor" \
+    "$(for a in operador.creado sesion.fallida sesion.iniciada cuenta.doble_factor_activado cuenta.clave_cambiada; do printf '%s' "$CUERPO" | jq -e --arg a "$a" 'any(.[]; .accion == $a)' >/dev/null || exit 1; done; echo $?)" \
+    "$(printf '%s' "$CUERPO" | jq -r '[.[].accion] | unique | join(", ")')"
+comprobar "Actividad: el registro no contiene contraseñas ni el secreto del doble factor" \
+    "$(printf '%s' "$CUERPO" | grep -q -e "$OP_CLAVE" -e "$OP_CLAVE2" -e "$TOTP_SECRETO"; [ $? -ne 0 ]; echo $?)"
+
+api DELETE "/api/operadores/$OP_ID"
+comprobar "Operadores: eliminar la cuenta de prueba, 200" "$(codigo_es 200; echo $?)"
+api GET /api/versiones
+comprobar "El historial de versiones ya no está disponible, 404" "$(codigo_es 404; echo $?)"
+
 # ---------------------------------------------------------------- limpieza
 limpiar
 aplicar
 comprobar "Limpieza: datos de prueba borrados y configuración aplicada" "$?"
-docker compose exec -T postgres psql -q -U radiuscontrol -d radiuscontrol -c     "DELETE FROM autenticaciones WHERE router_nombre LIKE '$ROUTER_PRUEBA%' OR usuario IN ('$USUARIO_PRUEBA', 'no-existe', 'DEFAULT'); DELETE FROM empresas e WHERE e.nombre = 'Empresa de prueba' AND NOT EXISTS (SELECT 1 FROM routers r WHERE r.empresa_id = e.id)" >/dev/null 2>&1
+docker compose exec -T postgres psql -q -U radiuscontrol -d radiuscontrol -c     "DELETE FROM autenticaciones WHERE router_nombre LIKE '$ROUTER_PRUEBA%' OR usuario IN ('$USUARIO_PRUEBA', 'no-existe', 'DEFAULT'); DELETE FROM auditoria WHERE operador = '$OPERADOR_PRUEBA' OR objeto IN ('$OPERADOR_PRUEBA', 'Empresa de prueba') OR objeto LIKE '$ROUTER_PRUEBA%'; DELETE FROM empresas e WHERE e.nombre = 'Empresa de prueba' AND NOT EXISTS (SELECT 1 FROM routers r WHERE r.empresa_id = e.id)" >/dev/null 2>&1
 docker exec "$RADIUS" rm -f /tmp/secreto /tmp/secreto-malo /tmp/secreto-raro
 api DELETE /api/sesion
 

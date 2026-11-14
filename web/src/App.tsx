@@ -1,4 +1,4 @@
-import { ListChecks, LogOut, Moon, Router as IconoRouter, Settings2, ShieldCheck, Sun, Users } from "lucide-react";
+import { ListChecks, Lock, LogOut, Moon, Router as IconoRouter, Settings2, ShieldCheck, Sun, Users } from "lucide-react";
 import * as React from "react";
 import { Navigate, NavLink, Route, Routes } from "react-router-dom";
 import { Badge, Button } from "@/components/ui";
@@ -9,6 +9,7 @@ import Autenticaciones from "./pages/Autenticaciones";
 import Configuracion from "./pages/Configuracion";
 import Login from "./pages/Login";
 import Routers from "./pages/Routers";
+import Seguridad from "./pages/Seguridad";
 import Usuarios from "./pages/Usuarios";
 
 const secciones = [
@@ -16,6 +17,7 @@ const secciones = [
   { ruta: "/usuarios", texto: "Usuarios MikroTik", icono: Users },
   { ruta: "/autenticaciones", texto: "Autenticaciones", icono: ListChecks },
   { ruta: "/configuracion", texto: "Configuración", icono: Settings2 },
+  { ruta: "/seguridad", texto: "Seguridad", icono: Lock },
 ];
 
 function IndicadorEstado() {
@@ -141,6 +143,7 @@ export default function App() {
         <Route path="/usuarios" element={<Usuarios />} />
         <Route path="/autenticaciones" element={<Autenticaciones />} />
         <Route path="/configuracion" element={<Configuracion />} />
+        <Route path="/seguridad" element={<Seguridad />} />
         <Route path="*" element={<Navigate to="/routers" replace />} />
       </Routes>
     </Marco>

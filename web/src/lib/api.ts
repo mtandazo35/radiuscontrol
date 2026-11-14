@@ -3,6 +3,7 @@ export class ErrorApi extends Error {
     public estado: number,
     mensaje: string,
     public detalle?: string,
+    public datos?: any,
   ) {
     super(mensaje);
   }
@@ -30,7 +31,7 @@ export async function api<T>(metodo: string, ruta: string, cuerpo?: unknown): Pr
     if (respuesta.status === 401 && ruta !== "/sesion") {
       window.dispatchEvent(new Event("rc:sesion-caducada"));
     }
-    throw new ErrorApi(respuesta.status, datos?.error ?? `Error ${respuesta.status}`, datos?.detalle);
+    throw new ErrorApi(respuesta.status, datos?.error ?? `Error ${respuesta.status}`, datos?.detalle, datos);
   }
   return datos as T;
 }
@@ -38,6 +39,40 @@ export async function api<T>(metodo: string, ruta: string, cuerpo?: unknown): Pr
 export interface Operador {
   usuario: string;
   rol: string;
+  totp: boolean;
+}
+
+export interface OperadorDetalle {
+  id: number;
+  usuario: string;
+  rol: string;
+  activo: boolean;
+  totp: boolean;
+  bloqueado: boolean;
+  ultimo_acceso: string | null;
+  clave_cambiada: string;
+  creado: string;
+  sesiones: number;
+  intentos_fallidos: number;
+}
+
+export interface Sesion {
+  id: number;
+  operador: string;
+  ip: string;
+  creada: string;
+  expira: string;
+  actual: boolean;
+}
+
+export interface Evento {
+  id: number;
+  fecha: string;
+  operador: string;
+  ip: string;
+  accion: string;
+  objeto: string;
+  detalle: string;
 }
 
 export interface Router {
