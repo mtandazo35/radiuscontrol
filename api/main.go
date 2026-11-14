@@ -22,6 +22,7 @@ var migraciones embed.FS
 type Config struct {
 	DirCompilado   string
 	DirRaddb       string
+	DirRegistro    string
 	ServidorRadius string
 }
 
@@ -97,6 +98,7 @@ func main() {
 		cfg: Config{
 			DirCompilado:   env("DIR_COMPILADO", "/compilado"),
 			DirRaddb:       env("DIR_RADDB", "/etc/freeradius"),
+			DirRegistro:    env("DIR_REGISTRO", "/registro"),
 			ServidorRadius: env("SERVIDOR_RADIUS", "192.0.2.1"),
 		},
 		senuelo: senuelo,
@@ -111,6 +113,8 @@ func main() {
 	if err := app.restaurarCompilado(ctx); err != nil {
 		log.Printf("aviso: no se pudo restaurar la configuración activa: %v", err)
 	}
+
+	go app.bucleRegistro(ctx)
 
 	srv := &http.Server{
 		Addr:              ":8080",
@@ -203,6 +207,9 @@ func (a *App) rutas() http.Handler {
 	m.HandleFunc("PUT /api/routers/{id}", a.privado(a.editarRouter))
 	m.HandleFunc("DELETE /api/routers/{id}", a.privado(a.borrarRouter))
 	m.HandleFunc("POST /api/routers/{id}/secreto", a.privado(a.rotarSecreto))
+
+	m.HandleFunc("GET /api/empresas", a.privado(a.listarEmpresas))
+	m.HandleFunc("GET /api/autenticaciones", a.privado(a.listarAutenticaciones))
 
 	m.HandleFunc("GET /api/usuarios", a.privado(a.listarUsuarios))
 	m.HandleFunc("POST /api/usuarios", a.privado(a.crearUsuario))

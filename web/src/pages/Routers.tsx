@@ -1,13 +1,14 @@
 import { Plus } from "lucide-react";
 import * as React from "react";
 import { Badge, Button, Card, Dialog, DialogContent, DialogFooter, Input, Label, Table, Td, Textarea, Th } from "@/components/ui";
-import { api, type RespuestaRouter, type Router } from "@/lib/api";
+import { api, type Empresa, type RespuestaRouter, type Router } from "@/lib/api";
 import { fecha } from "@/lib/utils";
 import { useApp } from "../contexto";
 
 interface Formulario {
   id: number | null;
   nombre: string;
+  empresa: string;
   descripcion: string;
   redes: string;
   secreto: string;
@@ -15,17 +16,19 @@ interface Formulario {
   activo: boolean;
 }
 
-const vacio: Formulario = { id: null, nombre: "", descripcion: "", redes: "", secreto: "", exigir: true, activo: true };
+const vacio: Formulario = { id: null, nombre: "", empresa: "", descripcion: "", redes: "", secreto: "", exigir: true, activo: true };
 
 export default function Routers() {
   const { avisar, avisarError, confirmar, refrescarEstado } = useApp();
   const [lista, setLista] = React.useState<Router[] | null>(null);
   const [form, setForm] = React.useState<Formulario | null>(null);
   const [ocupado, setOcupado] = React.useState(false);
+  const [empresas, setEmpresas] = React.useState<Empresa[]>([]);
 
   const cargar = React.useCallback(async () => {
     try {
       setLista(await api<Router[]>("GET", "/routers"));
+      setEmpresas(await api<Empresa[]>("GET", "/empresas"));
     } catch (e) {
       avisarError(e);
     }
@@ -45,7 +48,7 @@ export default function Routers() {
     avisar({
       titulo,
       mensaje:
-        "Este secreto se muestra una sola vez. Pega estas líneas en el terminal del router y recuerda aplicar los cambios en el panel.",
+        "Este secreto se muestra una sola vez. Pega estas líneas en el terminal del router, aplica los cambios en el panel y abre el puerto RADIUS en el firewall del servidor (botón «Firewall» del router).",
       copiable: r.script_rsc,
     });
   };
@@ -56,6 +59,7 @@ export default function Routers() {
     setOcupado(true);
     const cuerpo = {
       nombre: form.nombre,
+      empresa: form.empresa,
       descripcion: form.descripcion,
       redes: form.redes.split(/[\n,]+/).map((x) => x.trim()).filter(Boolean),
       activo: form.activo,
@@ -81,6 +85,7 @@ export default function Routers() {
     try {
       await api("PUT", `/routers/${r.id}`, {
         nombre: r.nombre,
+        empresa: r.empresa,
         descripcion: r.descripcion,
         redes: r.redes,
         activo: !r.activo,
@@ -106,6 +111,15 @@ export default function Routers() {
     } catch (e) {
       avisarError(e);
     }
+  };
+
+  const firewall = (r: Router) => {
+    avisar({
+      titulo: `Firewall para «${r.nombre}»`,
+      mensaje:
+        "FreeRADIUS solo recibe los paquetes de este router si el firewall del servidor deja pasar su dirección de origen al puerto 1812/udp. Ejecuta esto en el servidor de RadiusControl:",
+      copiable: r.redes.map((red) => `ufw allow from ${red} to any port 1812 proto udp comment 'RADIUS ${r.nombre}'`).join("\n"),
+    });
   };
 
   const borrar = async (r: Router) => {
@@ -138,6 +152,7 @@ export default function Routers() {
           <thead>
             <tr>
               <Th>Nombre</Th>
+              <Th>Empresa</Th>
               <Th>Redes de origen</Th>
               <Th>Estado</Th>
               <Th>Secreto rotado</Th>
@@ -147,7 +162,7 @@ export default function Routers() {
           <tbody>
             {lista?.length === 0 && (
               <tr>
-                <Td colSpan={5} className="py-10 text-center text-muted-foreground">
+                <Td colSpan={6} className="py-10 text-center text-muted-foreground">
                   Todavía no hay routers. Crea el primero con «Nuevo router».
                 </Td>
               </tr>
@@ -158,6 +173,7 @@ export default function Routers() {
                   <div className="font-medium">{r.nombre}</div>
                   {r.descripcion && <div className="text-xs text-muted-foreground">{r.descripcion}</div>}
                 </Td>
+                <Td>{r.empresa || <Badge variant="warning">Sin empresa</Badge>}</Td>
                 <Td className="font-mono text-xs">
                   {r.redes.map((red) => (
                     <div key={red}>{red}</div>
@@ -179,6 +195,7 @@ export default function Routers() {
                         setForm({
                           id: r.id,
                           nombre: r.nombre,
+                          empresa: r.empresa,
                           descripcion: r.descripcion,
                           redes: r.redes.join("\n"),
                           secreto: "",
@@ -188,6 +205,9 @@ export default function Routers() {
                       }
                     >
                       Editar
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => firewall(r)}>
+                      Firewall
                     </Button>
                     <Button size="sm" variant="outline" onClick={() => rotar(r)}>
                       Rotar secreto
@@ -213,6 +233,16 @@ export default function Routers() {
               <div className="space-y-2">
                 <Label htmlFor="nombre">Nombre</Label>
                 <Input id="nombre" required maxLength={63} value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="empresa">Empresa</Label>
+                <Input id="empresa" required maxLength={63} list="empresas" autoComplete="off" value={form.empresa} onChange={(e) => setForm({ ...form, empresa: e.target.value })} />
+                <datalist id="empresas">
+                  {empresas.map((e) => (
+                    <option key={e.nombre} value={e.nombre} />
+                  ))}
+                </datalist>
+                <p className="text-xs text-muted-foreground">A quién pertenece el router. Escribe una nueva o elige una existente.</p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="descripcion">Descripción</Label>

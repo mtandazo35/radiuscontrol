@@ -20,6 +20,12 @@ trap terminar TERM INT
 
 mkdir -p "$COMP/estado"
 
+# Carpeta del registro de autenticaciones: la escribe FreeRADIUS y la lee la API.
+REGISTRO="${DIR_REGISTRO:-/registro}"
+mkdir -p "$REGISTRO"
+chown "$(stat -c %U "$RADDB/mods-config/files" 2>/dev/null || echo root):$GRUPO" "$REGISTRO"
+chmod 0770 "$REGISTRO"
+
 # informar <estado> <versión> <huella clients> <huella authorize>
 informar() {
     printf '{"estado":"%s","version":"%s","sha_clients":"%s","sha_authorize":"%s","desde":"%s"}\n' \

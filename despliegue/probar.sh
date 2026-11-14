@@ -133,7 +133,7 @@ comprobar "Panel: un cambio sin la cabecera propia se rechaza, 403" "$(codigo_es
 limpiar
 
 # ---------------------------------------------------------------- altas
-api POST /api/routers "$(jq -n --arg n "$ROUTER_PRUEBA" '{nombre:$n,descripcion:"Prueba automática",redes:["127.0.0.1"]}')"
+api POST /api/routers "$(jq -n --arg n "$ROUTER_PRUEBA" '{nombre:$n,empresa:"Empresa de prueba",descripcion:"Prueba automática",redes:["127.0.0.1"]}')"
 comprobar "Router: alta con secreto generado, 201" "$(codigo_es 201; echo $?)"
 ROUTER_ID="$(printf '%s' "$CUERPO" | jq -r '.router.id')"
 SECRETO="$(printf '%s' "$CUERPO" | jq -r '.secreto_generado')"
@@ -143,11 +143,17 @@ api GET /api/routers
 comprobar "Router: el listado no devuelve el secreto" \
     "$(printf '%s' "$CUERPO" | grep -q -e "$SECRETO" -e secreto_cifrado; [ $? -ne 0 ]; echo $?)"
 
-api POST /api/routers "$(jq -n --arg n "$ROUTER_PRUEBA-2" '{nombre:$n,redes:["127.0.0.0/8"]}')"
+api POST /api/routers "$(jq -n --arg n "$ROUTER_PRUEBA-2" '{nombre:$n,empresa:"Empresa de prueba",redes:["127.0.0.0/8"]}')"
 comprobar "Router: una red que se superpone con otro router se rechaza, 409" "$(codigo_es 409; echo $?)" "$CUERPO"
 
-api POST /api/routers "$(jq -n --arg n "$ROUTER_PRUEBA-3" '{nombre:$n,redes:["0.0.0.0/0"]}')"
+api POST /api/routers "$(jq -n --arg n "$ROUTER_PRUEBA-3" '{nombre:$n,empresa:"Empresa de prueba",redes:["0.0.0.0/0"]}')"
 comprobar "Router: una red que abarca todo se rechaza, 400" "$(codigo_es 400; echo $?)" "$CUERPO"
+
+api POST /api/routers "$(jq -n --arg n "$ROUTER_PRUEBA-4" '{nombre:$n,redes:["192.0.2.77"]}')"
+comprobar "Router: sin empresa se rechaza, 400" "$(codigo_es 400; echo $?)" "$CUERPO"
+
+api GET /api/routers
+comprobar "Router: el listado indica la empresa del router"     "$([ "$(printf '%s' "$CUERPO" | jq -r ".[] | select(.id == $ROUTER_ID) | .empresa")" = "Empresa de prueba" ]; echo $?)"
 
 api POST /api/usuarios '{"usuario":"DEFAULT","grupo":"full"}'
 comprobar "Usuario: el nombre reservado DEFAULT se rechaza, 400" "$(codigo_es 400; echo $?)" "$CUERPO"
@@ -208,6 +214,23 @@ comprobar "RADIUS: origen no autorizado ($IP_PUBLICA), sin respuesta" \
     "$(printf '%s' "$S" | grep -q 'Received'; [ $? -ne 0 ]; echo $?)" "$(printf '%s' "$S" | tail -1)"
 S="$(docker logs --since 1m "$RADIUS" 2>&1 | grep -i 'unknown client' | tail -1)"
 comprobar "RADIUS: el intento no autorizado queda en el registro" "$([ -n "$S" ]; echo $?)" "$S"
+
+# ---------------------------------------------------------------- registro de autenticaciones
+sleep 5
+api GET "/api/autenticaciones?buscar=$USUARIO_PRUEBA&limite=100"
+REG="$CUERPO"
+tiene() { [ "$(printf '%s' "$REG" | jq "[.[] | select($1)] | length")" -gt 0 ]; }
+comprobar "Registro: el login aceptado por PAP queda anotado con router, empresa y grupo"     "$(tiene '.resultado == "aceptado" and .metodo == "PAP" and .router == "prueba-automatica" and .empresa == "Empresa de prueba" and .grupo == "full" and .ip_origen == "127.0.0.1"'; echo $?)"     "$(printf '%s' "$REG" | jq -c '[.[] | select(.resultado == "aceptado" and .metodo == "PAP")][0]')"
+comprobar "Registro: el login aceptado por MS-CHAP queda anotado con su método"     "$(tiene '.resultado == "aceptado" and .metodo == "MS-CHAPv1"'; echo $?)"
+comprobar "Registro: el rechazo por contraseña incorrecta queda anotado con su motivo"     "$(tiene '.resultado == "rechazado" and .metodo == "PAP" and (.motivo | length) > 0'; echo $?)"     "$(printf '%s' "$REG" | jq -c '[.[] | select(.resultado == "rechazado")][0] | {resultado, metodo, motivo}')"
+api GET "/api/autenticaciones?buscar=no-existe&resultado=rechazado"
+comprobar "Registro: el intento de un usuario inexistente queda anotado"     "$([ "$(printf '%s' "$CUERPO" | jq 'length')" -gt 0 ]; echo $?)"
+comprobar "Registro: no guarda contraseñas ni secretos"     "$(docker exec "$RADIUS" cat /registro/auth.log | grep -q -e "$CLAVE" -e "$SECRETO" -e "$HASH_NT"; [ $? -ne 0 ]; echo $?)"
+
+docker exec "$RADIUS" chmod 000 /registro
+S="$(radius 127.0.0.1 /tmp/secreto "$PAP_OK")"
+docker exec "$RADIUS" chmod 0770 /registro
+comprobar "Registro: si no se puede escribir, el login se acepta igualmente"     "$(printf '%s' "$S" | grep -q 'Received Access-Accept'; echo $?)"
 
 # ---------------------------------------------------------------- base de datos
 VOLCADO="$(docker compose exec -T postgres pg_dump -U radiuscontrol radiuscontrol 2>&1)"
@@ -285,7 +308,7 @@ api GET /api/estado
 comprobar "Vuelta atrás: el panel avisa de que lo aplicado difiere de lo deseado" \
     "$([ "$(printf '%s' "$CUERPO" | jq -r .cambios_pendientes)" = "true" ]; echo $?)"
 
-api PUT "/api/routers/$ROUTER_ID" "$(jq -n --arg n "$ROUTER_PRUEBA" '{nombre:$n,redes:["127.0.0.1"],activo:false}')"
+api PUT "/api/routers/$ROUTER_ID" "$(jq -n --arg n "$ROUTER_PRUEBA" '{nombre:$n,empresa:"Empresa de prueba",redes:["127.0.0.1"],activo:false}')"
 aplicar
 S="$(radius 127.0.0.1 /tmp/secreto-raro "$PAP_OK")"
 comprobar "Suspensión: un router suspendido deja de recibir respuesta" "$(printf '%s' "$S" | grep -q 'Received'; [ $? -ne 0 ]; echo $?)"
@@ -294,6 +317,7 @@ comprobar "Suspensión: un router suspendido deja de recibir respuesta" "$(print
 limpiar
 aplicar
 comprobar "Limpieza: datos de prueba borrados y configuración aplicada" "$?"
+docker compose exec -T postgres psql -q -U radiuscontrol -d radiuscontrol -c     "DELETE FROM autenticaciones WHERE router_nombre LIKE '$ROUTER_PRUEBA%' OR usuario IN ('$USUARIO_PRUEBA', 'no-existe', 'DEFAULT'); DELETE FROM empresas e WHERE e.nombre = 'Empresa de prueba' AND NOT EXISTS (SELECT 1 FROM routers r WHERE r.empresa_id = e.id)" >/dev/null 2>&1
 docker exec "$RADIUS" rm -f /tmp/secreto /tmp/secreto-malo /tmp/secreto-raro
 api DELETE /api/sesion
 

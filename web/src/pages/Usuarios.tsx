@@ -15,12 +15,19 @@ interface Formulario {
 }
 
 const vacio: Formulario = { id: null, usuario: "", nombre: "", grupo: "full", clave: "", activo: true };
+const gruposBase = ["full", "write", "read"];
 
 export default function Usuarios() {
   const { avisar, avisarError, confirmar, refrescarEstado } = useApp();
   const [lista, setLista] = React.useState<Usuario[] | null>(null);
   const [form, setForm] = React.useState<Formulario | null>(null);
   const [ocupado, setOcupado] = React.useState(false);
+  const [otroGrupo, setOtroGrupo] = React.useState(false);
+
+  const abrir = (f: Formulario) => {
+    setOtroGrupo(!gruposBase.includes(f.grupo));
+    setForm(f);
+  };
 
   const cargar = React.useCallback(async () => {
     try {
@@ -124,7 +131,7 @@ export default function Usuarios() {
             Personas que entran a los routers por WinBox, SSH o WebFig. El grupo debe existir en cada router.
           </p>
         </div>
-        <Button onClick={() => setForm(vacio)}>
+        <Button onClick={() => abrir(vacio)}>
           <Plus /> Nuevo usuario
         </Button>
       </div>
@@ -164,7 +171,7 @@ export default function Usuarios() {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => setForm({ id: u.id, usuario: u.usuario, nombre: u.nombre_completo, grupo: u.grupo, clave: "", activo: u.activo })}
+                      onClick={() => abrir({ id: u.id, usuario: u.usuario, nombre: u.nombre_completo, grupo: u.grupo, clave: "", activo: u.activo })}
                     >
                       Editar
                     </Button>
@@ -202,12 +209,34 @@ export default function Usuarios() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="grupo">Grupo en el router</Label>
-                <Input id="grupo" required maxLength={32} list="grupos" value={form.grupo} onChange={(e) => setForm({ ...form, grupo: e.target.value })} />
-                <datalist id="grupos">
-                  <option value="full" />
-                  <option value="write" />
-                  <option value="read" />
-                </datalist>
+                <select
+                  id="grupo"
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  value={otroGrupo ? "__otro" : form.grupo}
+                  onChange={(e) => {
+                    const otro = e.target.value === "__otro";
+                    setOtroGrupo(otro);
+                    setForm({ ...form, grupo: otro ? "" : e.target.value });
+                  }}
+                >
+                  <option value="full">full: control total</option>
+                  <option value="write">write: puede cambiar la configuración</option>
+                  <option value="read">read: solo lectura</option>
+                  <option value="__otro">Otro grupo…</option>
+                </select>
+                {otroGrupo && (
+                  <Input
+                    aria-label="Nombre del grupo"
+                    required
+                    maxLength={32}
+                    placeholder="Nombre exacto del grupo en el router"
+                    value={form.grupo}
+                    onChange={(e) => setForm({ ...form, grupo: e.target.value })}
+                  />
+                )}
+                <p className="text-xs text-muted-foreground">
+                  full, write y read vienen de fábrica en RouterOS. Un grupo propio debe existir en cada router.
+                </p>
               </div>
               {form.id === null && (
                 <div className="space-y-2">

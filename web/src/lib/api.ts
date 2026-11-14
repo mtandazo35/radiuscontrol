@@ -43,6 +43,7 @@ export interface Operador {
 export interface Router {
   id: number;
   nombre: string;
+  empresa: string;
   descripcion: string;
   activo: boolean;
   redes: string[];
@@ -70,6 +71,28 @@ export interface Usuario {
 export interface RespuestaUsuario {
   usuario: Usuario;
   clave_generada?: string;
+}
+
+export interface Empresa {
+  nombre: string;
+  routers: number;
+}
+
+export interface Autenticacion {
+  id: number;
+  fecha: string;
+  resultado: "aceptado" | "rechazado";
+  usuario: string;
+  ip_origen: string;
+  router_id: number | null;
+  router: string;
+  empresa: string;
+  nas_identifier: string;
+  nas_ip: string;
+  origen: string;
+  metodo: string;
+  grupo: string;
+  motivo: string;
 }
 
 export interface Version {

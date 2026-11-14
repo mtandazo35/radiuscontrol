@@ -16,6 +16,7 @@ import (
 type Router struct {
 	ID            int64     `json:"id"`
 	Nombre        string    `json:"nombre"`
+	Empresa       string    `json:"empresa"`
 	Descripcion   string    `json:"descripcion"`
 	Activo        bool      `json:"activo"`
 	Redes         []string  `json:"redes"`
@@ -26,6 +27,7 @@ type Router struct {
 
 type routerEntrada struct {
 	Nombre      string   `json:"nombre"`
+	Empresa     string   `json:"empresa"`
 	Descripcion string   `json:"descripcion"`
 	Activo      *bool    `json:"activo"`
 	Redes       []string `json:"redes"`
@@ -105,21 +107,22 @@ func (a *App) scriptRouter(secreto string) string {
 
 const consultaRouters = `
 	SELECT r.id, r.nombre, r.descripcion, r.activo, r.secreto_rotado,
-	       r.exigir_message_authenticator, r.creado,
+	       r.exigir_message_authenticator, r.creado, COALESCE(e.nombre, ''),
 	       COALESCE(array_agg(text(rr.red) ORDER BY rr.red) FILTER (WHERE rr.id IS NOT NULL), '{}')
-	FROM routers r LEFT JOIN router_redes rr ON rr.router_id = r.id`
+	FROM routers r LEFT JOIN router_redes rr ON rr.router_id = r.id
+	LEFT JOIN empresas e ON e.id = r.empresa_id`
 
 func leerRouter(fila pgx.Row) (*Router, error) {
 	var r Router
 	if err := fila.Scan(&r.ID, &r.Nombre, &r.Descripcion, &r.Activo, &r.SecretoRotado,
-		&r.ExigirMA, &r.Creado, &r.Redes); err != nil {
+		&r.ExigirMA, &r.Creado, &r.Empresa, &r.Redes); err != nil {
 		return nil, err
 	}
 	return &r, nil
 }
 
 func (a *App) routerPorID(ctx context.Context, id int64) (*Router, error) {
-	r, err := leerRouter(a.db.QueryRow(ctx, consultaRouters+` WHERE r.id = $1 GROUP BY r.id`, id))
+	r, err := leerRouter(a.db.QueryRow(ctx, consultaRouters+` WHERE r.id = $1 GROUP BY r.id, e.nombre`, id))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, noEncontrado()
 	}
@@ -127,7 +130,7 @@ func (a *App) routerPorID(ctx context.Context, id int64) (*Router, error) {
 }
 
 func (a *App) listarRouters(w http.ResponseWriter, r *http.Request, _ *Operador) error {
-	filas, err := a.db.Query(r.Context(), consultaRouters+` GROUP BY r.id ORDER BY lower(r.nombre)`)
+	filas, err := a.db.Query(r.Context(), consultaRouters+` GROUP BY r.id, e.nombre ORDER BY lower(COALESCE(e.nombre, '')), lower(r.nombre)`)
 	if err != nil {
 		return err
 	}
@@ -139,6 +142,42 @@ func (a *App) listarRouters(w http.ResponseWriter, r *http.Request, _ *Operador)
 			return err
 		}
 		lista = append(lista, ro)
+	}
+	if err := filas.Err(); err != nil {
+		return err
+	}
+	escribirJSON(w, http.StatusOK, lista)
+	return nil
+}
+
+// idEmpresa devuelve la empresa con ese nombre y la crea si no existe. Los
+// nombres no distinguen mayúsculas: se conserva la primera forma escrita.
+func idEmpresa(ctx context.Context, tx pgx.Tx, nombre string) (int64, error) {
+	var id int64
+	err := tx.QueryRow(ctx, `INSERT INTO empresas (nombre) VALUES ($1)
+		ON CONFLICT (lower(nombre)) DO UPDATE SET nombre = empresas.nombre RETURNING id`, nombre).Scan(&id)
+	return id, err
+}
+
+func (a *App) listarEmpresas(w http.ResponseWriter, r *http.Request, _ *Operador) error {
+	filas, err := a.db.Query(r.Context(), `SELECT e.nombre, count(r.id)
+		FROM empresas e LEFT JOIN routers r ON r.empresa_id = e.id
+		GROUP BY e.id ORDER BY lower(e.nombre)`)
+	if err != nil {
+		return err
+	}
+	defer filas.Close()
+	type empresa struct {
+		Nombre  string `json:"nombre"`
+		Routers int    `json:"routers"`
+	}
+	lista := []empresa{}
+	for filas.Next() {
+		var e empresa
+		if err := filas.Scan(&e.Nombre, &e.Routers); err != nil {
+			return err
+		}
+		lista = append(lista, e)
 	}
 	if err := filas.Err(); err != nil {
 		return err
@@ -185,6 +224,10 @@ func validarRouter(in *routerEntrada) ([]netip.Prefix, error) {
 	if len(in.Descripcion) > 200 {
 		return nil, malo("La descripción es demasiado larga.")
 	}
+	in.Empresa = strings.TrimSpace(in.Empresa)
+	if !reNombreRouter.MatchString(in.Empresa) {
+		return nil, malo("Indica la empresa a la que pertenece el router (letras, números, espacios, punto, guion y guion bajo).")
+	}
 	return normalizarRedes(in.Redes)
 }
 
@@ -213,10 +256,14 @@ func (a *App) crearRouter(w http.ResponseWriter, r *http.Request, op *Operador) 
 	ctx := r.Context()
 	var id int64
 	err = pgx.BeginFunc(ctx, a.db, func(tx pgx.Tx) error {
+		empresaID, err := idEmpresa(ctx, tx, in.Empresa)
+		if err != nil {
+			return err
+		}
 		if err := tx.QueryRow(ctx, `INSERT INTO routers
-			(nombre, descripcion, activo, secreto_cifrado, exigir_message_authenticator)
-			VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-			in.Nombre, in.Descripcion, activo, cifrado, exigir).Scan(&id); err != nil {
+			(nombre, descripcion, activo, secreto_cifrado, exigir_message_authenticator, empresa_id)
+			VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+			in.Nombre, in.Descripcion, activo, cifrado, exigir, empresaID).Scan(&id); err != nil {
 			if errorPG(err, "23505") {
 				return conflicto("Ya existe un router con ese nombre.")
 			}
@@ -228,7 +275,7 @@ func (a *App) crearRouter(w http.ResponseWriter, r *http.Request, op *Operador) 
 		return err
 	}
 	a.auditar(ctx, op.Usuario, ipCliente(r), "router.creado", in.Nombre,
-		map[string]any{"redes": len(redes), "secreto_generado": generado})
+		map[string]any{"empresa": in.Empresa, "redes": len(redes), "secreto_generado": generado})
 	ro, err := a.routerPorID(ctx, id)
 	if err != nil {
 		return err
@@ -263,9 +310,13 @@ func (a *App) editarRouter(w http.ResponseWriter, r *http.Request, op *Operador)
 
 	ctx := r.Context()
 	err = pgx.BeginFunc(ctx, a.db, func(tx pgx.Tx) error {
+		empresaID, err := idEmpresa(ctx, tx, in.Empresa)
+		if err != nil {
+			return err
+		}
 		ct, err := tx.Exec(ctx, `UPDATE routers SET nombre = $2, descripcion = $3, activo = $4,
-			exigir_message_authenticator = $5, actualizado = now() WHERE id = $1`,
-			id, in.Nombre, in.Descripcion, activo, exigir)
+			exigir_message_authenticator = $5, empresa_id = $6, actualizado = now() WHERE id = $1`,
+			id, in.Nombre, in.Descripcion, activo, exigir, empresaID)
 		if err != nil {
 			if errorPG(err, "23505") {
 				return conflicto("Ya existe un router con ese nombre.")

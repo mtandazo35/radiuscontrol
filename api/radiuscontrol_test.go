@@ -130,6 +130,46 @@ func TestValidarSecreto(t *testing.T) {
 	}
 }
 
+func TestParsearLineaDelRegistro(t *testing.T) {
+	linea := func(campos ...string) string { return strings.Join(campos, "\t") }
+
+	a, err := parsearLinea(linea("1794690000", "aceptado", "tecnico%20uno", "192.0.2.10", "rc-7-12",
+		"Router%20A", "192.0.2.10", "198.51.100.4", "MS-CHAPv2", "full", ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.Resultado != "aceptado" || a.Usuario != "tecnico uno" || a.IPOrigen != "192.0.2.10" ||
+		a.RouterID == nil || *a.RouterID != 7 || a.NASIdentifier != "Router A" ||
+		a.Origen != "198.51.100.4" || a.Metodo != "MS-CHAPv2" || a.Grupo != "full" || a.Motivo != "" {
+		t.Fatalf("línea mal interpretada: %+v", a)
+	}
+	if a.Fecha.Unix() != 1794690000 {
+		t.Fatalf("fecha incorrecta: %v", a.Fecha)
+	}
+
+	// Un usuario con tabulador o salto de línea llega codificado y no rompe el formato.
+	b, err := parsearLinea(linea("1794690000", "rechazado", "a%09b%0Ac", "192.0.2.10", "otro",
+		"", "", "", "PAP", "", "motivo%3A%20x"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b.Usuario != "a\tb\nc" || b.RouterID != nil || b.Motivo != "motivo: x" {
+		t.Fatalf("línea mal interpretada: %+v", b)
+	}
+
+	malas := []string{
+		"",
+		linea("x", "aceptado"),
+		linea("abc", "aceptado", "", "", "", "", "", "", "", "", ""),
+		linea("1", "quizas", "", "", "", "", "", "", "", "", ""),
+	}
+	for _, mala := range malas {
+		if _, err := parsearLinea(mala); err == nil {
+			t.Errorf("la línea %q debía rechazarse", mala)
+		}
+	}
+}
+
 func TestRenderizarEsDeterminista(t *testing.T) {
 	clientes := []clienteComp{
 		{RouterID: 1, RedID: 1, Red: "192.0.2.10/32", Secreto: "abc", ExigirMA: true},

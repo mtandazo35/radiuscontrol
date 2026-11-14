@@ -36,6 +36,7 @@ services:
       - admin_clave
     volumes:
       - compilado:/compilado
+      - registro:/registro
     # Solo en el equipo local: al panel se llega por el proxy web.
     ports:
       - "127.0.0.1:8080:8080"
@@ -50,6 +51,7 @@ services:
     network_mode: host
     volumes:
       - compilado:/compilado
+      - registro:/registro
 
   web:
     build:
@@ -75,4 +77,5 @@ secrets:
 volumes:
   pgdata:
   compilado:
+  registro:
   caddy_data:

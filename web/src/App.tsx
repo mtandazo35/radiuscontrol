@@ -1,10 +1,11 @@
-import { LogOut, Moon, Router as IconoRouter, Settings2, ShieldCheck, Sun, Users } from "lucide-react";
+import { ListChecks, LogOut, Moon, Router as IconoRouter, Settings2, ShieldCheck, Sun, Users } from "lucide-react";
 import * as React from "react";
 import { Navigate, NavLink, Route, Routes } from "react-router-dom";
 import { Badge, Button } from "@/components/ui";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useApp } from "./contexto";
+import Autenticaciones from "./pages/Autenticaciones";
 import Configuracion from "./pages/Configuracion";
 import Login from "./pages/Login";
 import Routers from "./pages/Routers";
@@ -13,6 +14,7 @@ import Usuarios from "./pages/Usuarios";
 const secciones = [
   { ruta: "/routers", texto: "Routers", icono: IconoRouter },
   { ruta: "/usuarios", texto: "Usuarios MikroTik", icono: Users },
+  { ruta: "/autenticaciones", texto: "Autenticaciones", icono: ListChecks },
   { ruta: "/configuracion", texto: "Configuración", icono: Settings2 },
 ];
 
@@ -122,6 +124,7 @@ export default function App() {
       <Routes>
         <Route path="/routers" element={<Routers />} />
         <Route path="/usuarios" element={<Usuarios />} />
+        <Route path="/autenticaciones" element={<Autenticaciones />} />
         <Route path="/configuracion" element={<Configuracion />} />
         <Route path="*" element={<Navigate to="/routers" replace />} />
       </Routes>

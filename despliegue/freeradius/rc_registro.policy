@@ -1,0 +1,53 @@
+# Políticas de RadiusControl para registrar cada autenticación.
+
+rc_metodo {
+	if (&request:MS-CHAP2-Response) {
+		update control {
+			&Tmp-String-0 := "MS-CHAPv2"
+		}
+	}
+	elsif (&request:MS-CHAP-Response) {
+		update control {
+			&Tmp-String-0 := "MS-CHAPv1"
+		}
+	}
+	elsif (&request:CHAP-Password) {
+		update control {
+			&Tmp-String-0 := "CHAP"
+		}
+	}
+	elsif (&request:User-Password) {
+		update control {
+			&Tmp-String-0 := "PAP"
+		}
+	}
+	else {
+		update control {
+			&Tmp-String-0 := "otro"
+		}
+	}
+}
+
+# Si el registro no se puede escribir, el login sigue su curso: «fail = 1» baja
+# la prioridad del fallo y «ok» deja un resultado correcto por encima.
+rc_registrar_aceptado {
+	rc_metodo
+	update control {
+		&Tmp-String-1 := "aceptado"
+	}
+	rc_registro {
+		fail = 1
+	}
+	ok
+}
+
+rc_registrar_rechazado {
+	rc_metodo
+	update control {
+		&Tmp-String-1 := "rechazado"
+	}
+	rc_registro {
+		fail = 1
+	}
+	ok
+}
