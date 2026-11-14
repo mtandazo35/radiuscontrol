@@ -394,6 +394,8 @@ api GET /api/operadores
 comprobar "Seguridad: la cuenta de solo lectura no ve los operadores, 403" "$(codigo_es 403; echo $?)"
 api GET /api/auditoria
 comprobar "Seguridad: la cuenta de solo lectura no ve el registro de actividad, 403" "$(codigo_es 403; echo $?)"
+api POST /api/actualizacion/aplicar '{"commit":"0123456789abcdef0123456789abcdef01234567"}'
+comprobar "Seguridad: la cuenta de solo lectura no puede lanzar una actualización, 403" "$(codigo_es 403; echo $?)"
 
 api POST /api/cuenta/clave "$(jq -n --arg n "otra-clave-larga-1" '{actual:"equivocada",nueva:$n}')"
 comprobar "Cuenta: cambiar la contraseña con la actual equivocada se rechaza, 400" "$(codigo_es 400; echo $?)"
@@ -622,6 +624,25 @@ comprobar "Bloqueo por IP: la dirección que anota el panel es la real, no la qu
     "$(printf '%s' "$CUERPO" | jq -e --arg ip "$IP_PUBLICA" '(.eventos | length) > 0 and all(.eventos[]; .ip == $ip)' >/dev/null; echo $?)" \
     "$(printf '%s' "$CUERPO" | jq -c '[.eventos[] | {ip, accion}][0]')"
 docker exec radiuscontrol-api radiuscontrol desbloquear-ip "$IP_PUBLICA" >/dev/null
+
+# ---------------------------------------------------------------- actualizaciones
+api POST /api/actualizacion/buscar '{}'
+comprobar "Actualización: pedir una búsqueda, 202" "$(codigo_es 202; echo $?)"
+for _ in $(seq 1 30); do
+    [ ! -e /var/lib/docker/volumes/radiuscontrol_compilado/_data/estado/actualizar-buscar ] && break
+    sleep 1
+done
+sleep 2
+api GET /api/actualizacion
+comprobar "Actualización: el panel conoce la versión instalada, que es la del repositorio del servidor" \
+    "$([ "$(printf '%s' "$CUERPO" | jq -r .busqueda.instalado)" = "$(git -C "$DIR/.." rev-parse HEAD)" ]; echo $?)" \
+    "$(printf '%s' "$CUERPO" | jq -c '.busqueda | {instalado: .instalado[0:7], ultimo: .ultimo[0:7], cambios: (.cambios | length), error}')"
+api POST /api/actualizacion/aplicar '{"commit":"no-es-un-commit"}'
+comprobar "Actualización: una versión mal escrita se rechaza, 400" "$(codigo_es 400; echo $?)"
+api POST /api/actualizacion/aplicar '{"commit":"0123456789abcdef0123456789abcdef01234567"}'
+comprobar "Actualización: no se puede pedir una versión que no sea la última publicada, 409" "$(codigo_es 409; echo $?)" "$CUERPO"
+comprobar "Actualización: un pedido rechazado no deja nada pendiente para el agente" \
+    "$([ ! -e /var/lib/docker/volumes/radiuscontrol_compilado/_data/estado/actualizar-pedido.json ]; echo $?)"
 
 api GET "/api/auditoria?tamano=5&pagina=1"
 P1="$CUERPO"

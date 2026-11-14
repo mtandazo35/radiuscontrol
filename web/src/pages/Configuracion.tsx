@@ -1,5 +1,6 @@
 import * as React from "react";
-import { Badge, Card } from "@/components/ui";
+import { useActualizacion, versionCorta } from "@/components/Actualizacion";
+import { Badge, Button, Card } from "@/components/ui";
 import { fecha, huellaCorta } from "@/lib/utils";
 import { useApp } from "../contexto";
 
@@ -25,7 +26,10 @@ const textoFirewall: Record<string, string> = {
 };
 
 export default function Configuracion() {
-  const { estado } = useApp();
+  const { estado, operador } = useApp();
+  const act = useActualizacion();
+  const b = act.datos?.busqueda;
+  const p = act.datos?.proceso;
   const fr = estado?.freeradius;
   const fw = estado?.firewall;
   const activa = estado?.activa;
@@ -49,6 +53,62 @@ export default function Configuracion() {
           <pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap rounded-md border bg-muted p-3 font-mono text-xs">
             {estado.ultimo_fallo}
           </pre>
+        </Card>
+      )}
+
+      {operador?.rol === "administrador" && (
+        <Card className="p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold">Versión</h2>
+              <p className="text-sm text-muted-foreground">
+                Las mejoras se publican en el repositorio y se instalan desde aquí. Nunca se instalan solas.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" variant="outline" onClick={act.buscar} disabled={act.buscando || act.enCurso}>
+                {act.buscando ? "Buscando…" : "Buscar actualizaciones"}
+              </Button>
+              {(act.pendientes > 0 || act.enCurso) && (
+                <Button size="sm" onClick={act.abrir}>
+                  {act.enCurso ? "Ver el avance" : "Ver novedades y actualizar"}
+                </Button>
+              )}
+            </div>
+          </div>
+          <dl className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <Dato titulo="Versión instalada">
+              <span className="font-mono text-xs">{versionCorta(b?.instalado)}</span>
+              {b?.instalado_fecha && <span className="text-muted-foreground"> · {fecha(b.instalado_fecha)}</span>}
+            </Dato>
+            <Dato titulo="Situación">
+              {!b ? (
+                <Badge variant="muted">Sin datos del agente</Badge>
+              ) : b.error ? (
+                <Badge variant="destructive">No se pudo consultar</Badge>
+              ) : act.pendientes > 0 ? (
+                <Badge variant="warning">{act.pendientes} cambio(s) nuevo(s)</Badge>
+              ) : (
+                <Badge variant="success">Al día</Badge>
+              )}
+            </Dato>
+            <Dato titulo="Última búsqueda">{fecha(b?.buscado)}</Dato>
+            <Dato titulo="Última actualización">
+              {p ? (
+                <>
+                  {p.estado === "ok" ? "Correcta" : p.estado === "en-curso" ? "En curso" : p.estado === "revertida" ? "Revertida" : "Fallida"}
+                  <span className="text-muted-foreground">
+                    {" "}
+                    · {versionCorta(p.de)} → {versionCorta(p.a)} · {p.quien} · {fecha(p.fin || p.inicio)}
+                  </span>
+                </>
+              ) : (
+                "Ninguna todavía"
+              )}
+            </Dato>
+          </dl>
+          {b?.error && <p className="mt-3 text-sm text-destructive">{b.error}</p>}
+          {p && p.estado !== "ok" && p.estado !== "en-curso" && p.mensaje && <p className="mt-3 text-sm text-destructive">{p.mensaje}</p>}
         </Card>
       )}
 

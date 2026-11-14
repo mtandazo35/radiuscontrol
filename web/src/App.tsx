@@ -1,6 +1,7 @@
 import { ListChecks, Lock, Moon, Router as IconoRouter, Settings2, ShieldCheck, Sun, Users } from "lucide-react";
 import * as React from "react";
 import { Navigate, NavLink, Route, Routes } from "react-router-dom";
+import { ProveedorActualizacion } from "@/components/Actualizacion";
 import { MenuUsuario } from "@/components/MenuUsuario";
 import { Badge, Button } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -127,15 +128,17 @@ export default function App() {
   const { operador } = useApp();
   if (!operador) return <Login />;
   return (
-    <Marco>
-      <Routes>
-        <Route path="/routers" element={<Routers />} />
-        <Route path="/usuarios" element={<Usuarios />} />
-        <Route path="/autenticaciones" element={<Autenticaciones />} />
-        <Route path="/configuracion" element={<Configuracion />} />
-        <Route path="/seguridad" element={<Seguridad />} />
-        <Route path="*" element={<Navigate to="/routers" replace />} />
-      </Routes>
-    </Marco>
+    <ProveedorActualizacion>
+      <Marco>
+        <Routes>
+          <Route path="/routers" element={<Routers />} />
+          <Route path="/usuarios" element={<Usuarios />} />
+          <Route path="/autenticaciones" element={<Autenticaciones />} />
+          <Route path="/configuracion" element={<Configuracion />} />
+          <Route path="/seguridad" element={<Seguridad />} />
+          <Route path="*" element={<Navigate to="/routers" replace />} />
+        </Routes>
+      </Marco>
+    </ProveedorActualizacion>
   );
 }

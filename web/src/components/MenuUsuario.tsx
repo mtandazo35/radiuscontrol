@@ -1,8 +1,9 @@
-import { KeyRound, Power, User } from "lucide-react";
+import { ArrowDownToLine, KeyRound, Loader2, Power, User } from "lucide-react";
 import * as React from "react";
 import { api, momentoUltimaActividad } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useApp } from "../contexto";
+import { useActualizacion } from "./Actualizacion";
 import { ModalMiCuenta, nombreRol } from "./MiCuenta";
 
 function iniciales(usuario: string) {
@@ -40,6 +41,8 @@ export function MenuUsuario() {
   const [cuenta, setCuenta] = React.useState<"cuenta" | "clave" | null>(null);
   const caja = React.useRef<HTMLDivElement>(null);
   const { resta, porInactividad } = useCuentaAtras();
+  const act = useActualizacion();
+  const avisar = operador?.rol === "administrador" && (act.pendientes > 0 || act.enCurso);
 
   React.useEffect(() => {
     if (!abierto) return;
@@ -74,13 +77,19 @@ export function MenuUsuario() {
     <div className="relative" ref={caja}>
       <button
         type="button"
-        className={cn(avatar, "size-9 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background")}
+        className={cn(avatar, "relative size-9 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background")}
         aria-haspopup="menu"
         aria-expanded={abierto}
         aria-label={`Menú de ${operador.usuario}`}
         onClick={() => setAbierto(!abierto)}
       >
         {iniciales(operador.usuario)}
+        {avisar && (
+          <span className="absolute -right-0.5 -top-0.5 flex size-3">
+            <span className="absolute inline-flex size-full animate-ping rounded-full bg-warning opacity-75" />
+            <span className="relative inline-flex size-3 rounded-full border-2 border-card bg-warning" />
+          </span>
+        )}
       </button>
 
       {abierto && (
@@ -94,6 +103,29 @@ export function MenuUsuario() {
               </div>
             </div>
           </div>
+          {avisar && (
+            <div className="border-b p-2">
+              <button
+                type="button"
+                role="menuitem"
+                className="flex w-full items-center gap-3 rounded-md border border-warning/50 bg-warning/10 px-3 py-2.5 text-left hover:bg-warning/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={() => {
+                  setAbierto(false);
+                  act.abrir();
+                }}
+              >
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-warning text-background">
+                  {act.enCurso ? <Loader2 className="size-4 animate-spin" /> : <ArrowDownToLine className="size-4" />}
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold">{act.enCurso ? "Actualizando el panel…" : "Actualización disponible"}</span>
+                  <span className="block text-xs text-muted-foreground">
+                    {act.enCurso ? "Pulsa para ver el avance." : `${act.pendientes} cambio(s) nuevo(s): pulsa para ver las mejoras.`}
+                  </span>
+                </span>
+              </button>
+            </div>
+          )}
           <div className="py-1">
             <button
               type="button"

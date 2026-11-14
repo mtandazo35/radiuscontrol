@@ -1,0 +1,16 @@
+[Unit]
+Description=RadiusControl: busca e instala actualizaciones a petición del panel
+After=docker.service network-online.target
+Wants=docker.service network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/radiuscontrol-actualizar.sh
+Restart=always
+RestartSec=5
+# Una actualización en curso no debe cortarse al reiniciar el servicio.
+KillMode=process
+TimeoutStopSec=900
+
+[Install]
+WantedBy=multi-user.target

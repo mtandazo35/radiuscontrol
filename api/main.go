@@ -353,6 +353,9 @@ func (a *App) rutas() http.Handler {
 	m.HandleFunc("POST /api/operadores/{id}/desbloquear", a.admin(a.desbloquearOperador))
 	m.HandleFunc("DELETE /api/operadores/{id}/totp", a.admin(a.quitarTOTPOperador))
 	m.HandleFunc("GET /api/auditoria", a.admin(a.listarAuditoria))
+	m.HandleFunc("GET /api/actualizacion", a.admin(a.verActualizacion))
+	m.HandleFunc("POST /api/actualizacion/buscar", a.admin(a.buscarActualizacion))
+	m.HandleFunc("POST /api/actualizacion/aplicar", a.admin(a.pedirActualizacion))
 	m.HandleFunc("GET /api/bloqueos", a.admin(a.listarBloqueos))
 	m.HandleFunc("POST /api/bloqueos/desbloquear", a.admin(a.desbloquearIP))
 	return m

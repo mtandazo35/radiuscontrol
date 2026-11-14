@@ -19,9 +19,9 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 echo "== 1. Dependencias"
-if ! command -v curl >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
+if ! command -v curl >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1 || ! command -v git >/dev/null 2>&1; then
     apt-get update -q
-    apt-get install -y -q curl ca-certificates jq
+    apt-get install -y -q curl ca-certificates jq git
 fi
 if ! command -v docker >/dev/null 2>&1; then
     curl -fsSL https://get.docker.com -o /root/get-docker.sh
@@ -29,6 +29,23 @@ if ! command -v docker >/dev/null 2>&1; then
 fi
 docker --version
 docker compose version
+
+echo "== 1b. Repositorio"
+# Las actualizaciones desde el panel necesitan que esta carpeta sea una copia
+# de git del repositorio. Una instalación hecha copiando archivos se convierte
+# aquí: los archivos versionados pasan a ser los de la rama principal; los
+# secretos y el entorno no están versionados y no se tocan.
+RAIZ="$(cd "$DIR/.." && pwd)"
+URL_REPO="${RC_REPO_URL:-https://github.com/mtandazo35/radiuscontrol.git}"
+if [ ! -d "$RAIZ/.git" ]; then
+    git -C "$RAIZ" init -q -b main
+    git -C "$RAIZ" remote add origin "$URL_REPO"
+    git -C "$RAIZ" fetch -q origin main
+    git -C "$RAIZ" reset -q --hard origin/main
+    echo "carpeta convertida en copia de git: $(git -C "$RAIZ" rev-parse --short HEAD)"
+else
+    echo "versión instalada: $(git -C "$RAIZ" rev-parse --short HEAD)"
+fi
 
 echo "== 2. Secretos"
 install -d -m 0700 "$DIR/secrets"
@@ -96,6 +113,15 @@ if command -v ufw >/dev/null 2>&1; then
 else
     echo "UFW no está instalado: el agente de firewall no se instala"
 fi
+
+echo "== 6b. Actualizaciones"
+install -m 0755 "$DIR/actualizar/radiuscontrol-actualizar.sh" /usr/local/sbin/radiuscontrol-actualizar.sh
+install -m 0644 "$DIR/actualizar/radiuscontrol-actualizar.service" /etc/systemd/system/radiuscontrol-actualizar.service
+systemctl daemon-reload
+systemctl enable radiuscontrol-actualizar.service >/dev/null 2>&1
+systemctl restart radiuscontrol-actualizar.service
+sleep 3
+systemctl is-active radiuscontrol-actualizar.service
 
 echo "== 7. Contraseña inicial"
 # La contraseña inicial solo hace falta en el primer arranque. Después se

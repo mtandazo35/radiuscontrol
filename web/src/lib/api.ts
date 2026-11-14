@@ -124,6 +124,29 @@ export interface RespuestaUsuario {
   clave_generada?: string;
 }
 
+export interface Actualizacion {
+  busqueda: {
+    instalado: string;
+    instalado_fecha: string;
+    instalado_asunto: string;
+    ultimo: string;
+    cambios: { commit: string; asunto: string; fecha: string }[];
+    buscado: string;
+    error: string;
+  } | null;
+  proceso: {
+    estado: "en-curso" | "ok" | "revertida" | "fallida";
+    paso: string;
+    pasos: string[];
+    mensaje: string;
+    de: string;
+    a: string;
+    quien: string;
+    inicio: string;
+    fin: string;
+  } | null;
+}
+
 export interface Bloqueos {
   bloqueos: { ip: string; desde: string; hasta: string; intentos: number }[];
   cuentas: { id: number; usuario: string; hasta: string; intentos: number }[];
