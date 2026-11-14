@@ -1,7 +1,7 @@
 import { ListChecks, Lock, Moon, Router as IconoRouter, Settings2, ShieldCheck, Sun, Users } from "lucide-react";
 import * as React from "react";
 import { Navigate, NavLink, Route, Routes } from "react-router-dom";
-import { ProveedorActualizacion } from "@/components/Actualizacion";
+import { ProveedorActualizacion, useActualizacion, versionCorta } from "@/components/Actualizacion";
 import { MenuUsuario } from "@/components/MenuUsuario";
 import { Badge, Button } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -74,6 +74,18 @@ function BotonAplicar() {
   );
 }
 
+// Versión instalada, al pie del menú lateral. Solo la conocen los administradores.
+function VersionInstalada() {
+  const act = useActualizacion();
+  const instalado = act.datos?.busqueda?.instalado;
+  if (!instalado) return null;
+  return (
+    <p className="hidden px-4 py-3 text-xs text-muted-foreground md:block">
+      Versión <span className="font-mono">{versionCorta(instalado)}</span>
+    </p>
+  );
+}
+
 function Marco({ children }: { children: React.ReactNode }) {
   const [oscuro, setOscuro] = React.useState(document.documentElement.classList.contains("dark"));
   const cambiarTema = () => {
@@ -106,6 +118,7 @@ function Marco({ children }: { children: React.ReactNode }) {
             </NavLink>
           ))}
         </nav>
+        <VersionInstalada />
       </aside>
       <div className="min-w-0 flex-1">
         <header className="flex flex-wrap items-center justify-end gap-2 border-b bg-card px-4 py-2.5">
