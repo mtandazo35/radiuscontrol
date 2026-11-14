@@ -6,6 +6,9 @@
 *.sqlite
 *.sqlite-wal
 
+# Lo que el laboratorio genera en el servidor
+/lab/generado/
+
 # Secretos y entorno
 .env
 .env.*
