@@ -1,0 +1,21 @@
+# Datos reales: nunca entran al repositorio
+/datos/
+/evidencias/privado/
+*.rsc
+*.backup
+*.sqlite
+*.sqlite-wal
+
+# Secretos y entorno
+.env
+.env.*
+!.env.example
+/secrets/
+*.key
+*.pem
+
+# Compilados y dependencias
+/bin/
+/dist/
+node_modules/
+*.log
