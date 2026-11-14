@@ -19,7 +19,7 @@ export default function Autenticaciones() {
         const q = new URLSearchParams({ pagina: String(pagina), tamano: String(tamano) });
         if (resultado) q.set("resultado", resultado);
         if (buscar.trim()) q.set("buscar", buscar.trim());
-        const r = await api<PaginaAutenticaciones>("GET", `/autenticaciones?${q}`);
+        const r = await api<PaginaAutenticaciones>("GET", `/autenticaciones?${q}`, undefined, { auto: !avisar });
         setDatos(r);
         // El servidor corrige una página que ya no existe.
         if (r.pagina !== pagina) setPagina(r.pagina);

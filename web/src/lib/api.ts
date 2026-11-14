@@ -9,13 +9,19 @@ export class ErrorApi extends Error {
   }
 }
 
-export async function api<T>(metodo: string, ruta: string, cuerpo?: unknown): Promise<T> {
+// auto: la petición la lanza el panel por su cuenta (un refresco periódico) y
+// no debe contar como actividad de la persona.
+export async function api<T>(metodo: string, ruta: string, cuerpo?: unknown, opciones?: { auto?: boolean }): Promise<T> {
   let respuesta: Response;
   try {
     respuesta = await fetch(`/api${ruta}`, {
       method: metodo,
       credentials: "same-origin",
-      headers: { "X-RC": "1", ...(cuerpo !== undefined ? { "Content-Type": "application/json" } : {}) },
+      headers: {
+        "X-RC": "1",
+        ...(opciones?.auto ? { "X-RC-Auto": "1" } : {}),
+        ...(cuerpo !== undefined ? { "Content-Type": "application/json" } : {}),
+      },
       body: cuerpo !== undefined ? JSON.stringify(cuerpo) : undefined,
     });
   } catch {
@@ -29,7 +35,7 @@ export async function api<T>(metodo: string, ruta: string, cuerpo?: unknown): Pr
   }
   if (!respuesta.ok) {
     if (respuesta.status === 401 && ruta !== "/sesion") {
-      window.dispatchEvent(new Event("rc:sesion-caducada"));
+      window.dispatchEvent(new CustomEvent("rc:sesion-caducada", { detail: datos?.motivo === "inactividad" ? datos.error : "" }));
     }
     throw new ErrorApi(respuesta.status, datos?.error ?? `Error ${respuesta.status}`, datos?.detalle, datos);
   }
@@ -62,6 +68,7 @@ export interface Sesion {
   ip: string;
   creada: string;
   expira: string;
+  ultima_actividad: string;
   actual: boolean;
 }
 
@@ -110,7 +117,8 @@ export interface RespuestaUsuario {
 
 export interface Bloqueos {
   bloqueos: { ip: string; desde: string; hasta: string; intentos: number }[];
-  regla: { intentos: number; ventana_minutos: number; bloqueo_minutos: number };
+  cuentas: { id: number; usuario: string; hasta: string; intentos: number }[];
+  regla: { intentos: number; ventana_minutos: number; bloqueo_minutos: number; intentos_cuenta: number; bloqueo_cuenta_m: number };
 }
 
 export interface PaginaAutenticaciones {

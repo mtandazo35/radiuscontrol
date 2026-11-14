@@ -13,6 +13,7 @@ interface Aviso {
 interface Contexto {
   operador: Operador | null;
   setOperador: (o: Operador | null) => void;
+  motivoSalida: string;
   estado: Estado | null;
   refrescarEstado: () => Promise<void>;
   refrescarOperador: () => Promise<void>;
@@ -33,6 +34,7 @@ export function useApp() {
 export function ProveedorApp({ children }: { children: React.ReactNode }) {
   const [operador, setOperador] = React.useState<Operador | null>(null);
   const [cargando, setCargando] = React.useState(true);
+  const [motivoSalida, setMotivoSalida] = React.useState("");
   const [estado, setEstado] = React.useState<Estado | null>(null);
   const [aviso, setAviso] = React.useState<Aviso | null>(null);
   const [copiado, setCopiado] = React.useState(false);
@@ -42,24 +44,44 @@ export function ProveedorApp({ children }: { children: React.ReactNode }) {
       .then(setOperador)
       .catch(() => setOperador(null))
       .finally(() => setCargando(false));
-    const caducada = () => setOperador(null);
+    const caducada = (e: Event) => {
+      setMotivoSalida((e as CustomEvent<string>).detail || "");
+      setOperador(null);
+    };
     window.addEventListener("rc:sesion-caducada", caducada);
     return () => window.removeEventListener("rc:sesion-caducada", caducada);
   }, []);
 
   const refrescarEstado = React.useCallback(async () => {
     try {
-      setEstado(await api<Estado>("GET", "/estado"));
+      setEstado(await api<Estado>("GET", "/estado", undefined, { auto: true }));
     } catch {
       // El indicador simplemente no se actualiza.
     }
   }, []);
+
+  // Mientras la persona usa el panel (ratón, teclado, pantalla táctil), se
+  // avisa al servidor como mucho una vez por minuto para que la sesión no se
+  // cierre por inactividad en mitad del trabajo.
+  React.useEffect(() => {
+    if (!operador) return;
+    let ultimo = Date.now();
+    const actividad = () => {
+      if (Date.now() - ultimo < 60000) return;
+      ultimo = Date.now();
+      api("GET", "/sesion").catch(() => undefined);
+    };
+    const eventos = ["mousemove", "keydown", "click", "scroll", "touchstart"];
+    eventos.forEach((e) => window.addEventListener(e, actividad, { passive: true }));
+    return () => eventos.forEach((e) => window.removeEventListener(e, actividad));
+  }, [operador]);
 
   React.useEffect(() => {
     if (!operador) {
       setEstado(null);
       return;
     }
+    setMotivoSalida("");
     refrescarEstado();
     const t = window.setInterval(refrescarEstado, 2000);
     return () => window.clearInterval(t);
@@ -77,6 +99,7 @@ export function ProveedorApp({ children }: { children: React.ReactNode }) {
     () => ({
       operador,
       setOperador,
+      motivoSalida,
       estado,
       refrescarEstado,
       refrescarOperador,
@@ -95,7 +118,7 @@ export function ProveedorApp({ children }: { children: React.ReactNode }) {
       confirmar: (titulo, mensaje, texto, peligro) =>
         new Promise<boolean>((resolver) => setAviso({ titulo, mensaje, confirmar: { texto, peligro, resolver } })),
     }),
-    [operador, estado, refrescarEstado, refrescarOperador],
+    [operador, estado, motivoSalida, refrescarEstado, refrescarOperador],
   );
 
   const cerrar = (ok: boolean) => {

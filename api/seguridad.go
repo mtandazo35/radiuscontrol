@@ -25,8 +25,8 @@ const (
 	rolAdmin      = "administrador"
 	rolLectura    = "lectura"
 	periodoTOTP   = 30
-	intentosTope  = 5
-	minutosBloque = 15
+	intentosTope  = 4
+	minutosBloque = 30
 )
 
 var base32SinRelleno = base32.StdEncoding.WithPadding(base32.NoPadding)
@@ -476,7 +476,7 @@ func (a *App) quitarTOTPOperador(w http.ResponseWriter, r *http.Request, op *Ope
 
 func (a *App) listarSesiones(w http.ResponseWriter, r *http.Request, op *Operador) error {
 	// Un administrador ve todas; los demás, solo las suyas.
-	filas, err := a.db.Query(r.Context(), `SELECT s.id, o.usuario, s.ip, s.creada, s.expira
+	filas, err := a.db.Query(r.Context(), `SELECT s.id, o.usuario, s.ip, s.creada, s.expira, s.ultima_actividad
 		FROM sesiones s JOIN operadores o ON o.id = s.operador_id
 		WHERE s.expira > now() AND ($1 OR s.operador_id = $2)
 		ORDER BY s.creada DESC`, op.Rol == rolAdmin, op.ID)
@@ -490,12 +490,13 @@ func (a *App) listarSesiones(w http.ResponseWriter, r *http.Request, op *Operado
 		IP       string    `json:"ip"`
 		Creada   time.Time `json:"creada"`
 		Expira   time.Time `json:"expira"`
+		Ultima   time.Time `json:"ultima_actividad"`
 		Actual   bool      `json:"actual"`
 	}
 	lista := []sesion{}
 	for filas.Next() {
 		var s sesion
-		if err := filas.Scan(&s.ID, &s.Operador, &s.IP, &s.Creada, &s.Expira); err != nil {
+		if err := filas.Scan(&s.ID, &s.Operador, &s.IP, &s.Creada, &s.Expira, &s.Ultima); err != nil {
 			return err
 		}
 		s.Actual = s.ID == op.SesionID
@@ -525,6 +526,20 @@ func (a *App) revocarSesion(w http.ResponseWriter, r *http.Request, op *Operador
 	}
 	a.auditar(r.Context(), op.Usuario, ipCliente(r), "sesion.revocada", usuario, nil)
 	escribirJSON(w, http.StatusOK, map[string]any{"ok": true})
+	return nil
+}
+
+// cerrarOtrasSesiones cierra todas las sesiones menos la que hace la petición.
+// Un administrador cierra las de todos los operadores; los demás, las suyas.
+func (a *App) cerrarOtrasSesiones(w http.ResponseWriter, r *http.Request, op *Operador) error {
+	ct, err := a.db.Exec(r.Context(), `DELETE FROM sesiones WHERE id <> $1 AND ($2 OR operador_id = $3)`,
+		op.SesionID, op.Rol == rolAdmin, op.ID)
+	if err != nil {
+		return err
+	}
+	a.auditar(r.Context(), op.Usuario, ipCliente(r), "sesion.revocada", "todas las demás",
+		map[string]any{"cerradas": ct.RowsAffected()})
+	escribirJSON(w, http.StatusOK, map[string]any{"cerradas": ct.RowsAffected()})
 	return nil
 }
 

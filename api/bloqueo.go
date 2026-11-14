@@ -105,11 +105,41 @@ func (a *App) listarBloqueos(w http.ResponseWriter, r *http.Request, _ *Operador
 	if err := filas.Err(); err != nil {
 		return err
 	}
+	filas.Close()
+
+	// Cuentas de operador bloqueadas por intentos fallidos.
+	type cuenta struct {
+		ID       int64     `json:"id"`
+		Usuario  string    `json:"usuario"`
+		Hasta    time.Time `json:"hasta"`
+		Intentos int       `json:"intentos"`
+	}
+	cuentas := []cuenta{}
+	filasC, err := a.db.Query(r.Context(), `SELECT id, usuario, bloqueado_hasta, intentos_fallidos
+		FROM operadores WHERE bloqueado_hasta > now() ORDER BY bloqueado_hasta DESC`)
+	if err != nil {
+		return err
+	}
+	defer filasC.Close()
+	for filasC.Next() {
+		var c cuenta
+		if err := filasC.Scan(&c.ID, &c.Usuario, &c.Hasta, &c.Intentos); err != nil {
+			return err
+		}
+		cuentas = append(cuentas, c)
+	}
+	if err := filasC.Err(); err != nil {
+		return err
+	}
+
 	escribirJSON(w, http.StatusOK, map[string]any{
 		"bloqueos": lista,
+		"cuentas":  cuentas,
 		"regla": map[string]any{
 			"intentos": intentosPorIP, "ventana_minutos": int(ventanaIntentos.Minutes()),
-			"bloqueo_minutos": int(duracionBloqueo.Minutes()),
+			"bloqueo_minutos":  int(duracionBloqueo.Minutes()),
+			"intentos_cuenta":  intentosTope,
+			"bloqueo_cuenta_m": minutosBloque,
 		},
 	})
 	return nil

@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -146,25 +147,84 @@ func hashToken(token string) []byte {
 	return s[:]
 }
 
+// Una sesión sin actividad de la persona durante inactividadMax se cierra sola.
+const inactividadMax = 30 * time.Minute
+
 func (a *App) operadorDeSesion(r *http.Request) (*Operador, error) {
 	sinSesion := &errHTTP{codigo: http.StatusUnauthorized, msg: "Sesión no iniciada o caducada."}
 	c, err := r.Cookie(cookieSesion)
 	if err != nil || c.Value == "" {
 		return nil, sinSesion
 	}
+	ctx := r.Context()
 	var op Operador
-	err = a.db.QueryRow(r.Context(), `
-		SELECT o.id, s.id, o.usuario, o.rol, o.totp_cifrado IS NOT NULL
+	var inactiva bool
+	err = a.db.QueryRow(ctx, `
+		SELECT o.id, s.id, o.usuario, o.rol, o.totp_cifrado IS NOT NULL,
+		       s.ultima_actividad < now() - $2::interval
 		FROM sesiones s JOIN operadores o ON o.id = s.operador_id
 		WHERE s.token_hash = $1 AND s.expira > now() AND o.activo`,
-		hashToken(c.Value)).Scan(&op.ID, &op.SesionID, &op.Usuario, &op.Rol, &op.TOTP)
+		hashToken(c.Value), inactividadMax.String()).
+		Scan(&op.ID, &op.SesionID, &op.Usuario, &op.Rol, &op.TOTP, &inactiva)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, sinSesion
 	}
 	if err != nil {
 		return nil, err
 	}
+	if inactiva {
+		a.cerrarInactivas(ctx, op.SesionID)
+		return nil, &errHTTP{codigo: http.StatusUnauthorized,
+			msg:   fmt.Sprintf("Tu sesión se cerró tras %d minutos sin actividad.", int(inactividadMax.Minutes())),
+			extra: map[string]any{"motivo": "inactividad"}}
+	}
+	// Las consultas que el panel hace solo (refrescos periódicos) llevan esta
+	// cabecera y no cuentan como actividad de la persona.
+	if r.Header.Get("X-RC-Auto") != "1" {
+		if _, err := a.db.Exec(ctx, `UPDATE sesiones SET ultima_actividad = now()
+			WHERE id = $1 AND ultima_actividad < now() - interval '15 seconds'`, op.SesionID); err != nil {
+			return nil, err
+		}
+	}
 	return &op, nil
+}
+
+// cerrarInactivas cierra las sesiones que llevan demasiado tiempo sin
+// actividad y lo deja anotado. Con sesionID distinto de cero, solo esa.
+func (a *App) cerrarInactivas(ctx context.Context, sesionID int64) {
+	filas, err := a.db.Query(ctx, `DELETE FROM sesiones s USING operadores o
+		WHERE o.id = s.operador_id AND s.ultima_actividad < now() - $1::interval AND ($2 = 0 OR s.id = $2)
+		RETURNING o.usuario, s.ip, s.ultima_actividad`, inactividadMax.String(), sesionID)
+	if err != nil {
+		log.Printf("no se pudieron cerrar las sesiones inactivas: %v", err)
+		return
+	}
+	type cerrada struct {
+		usuario, ip string
+		ultima      time.Time
+	}
+	var lista []cerrada
+	for filas.Next() {
+		var c cerrada
+		if err := filas.Scan(&c.usuario, &c.ip, &c.ultima); err == nil {
+			lista = append(lista, c)
+		}
+	}
+	filas.Close()
+	for _, c := range lista {
+		a.auditar(ctx, c.usuario, c.ip, "sesion.cerrada_por_inactividad", "operador", map[string]any{
+			"motivo":           fmt.Sprintf("más de %d minutos sin actividad", int(inactividadMax.Minutes())),
+			"ultima_actividad": c.ultima.UTC().Format(time.RFC3339),
+		})
+	}
+}
+
+// bucleSesiones cierra las sesiones inactivas aunque nadie vuelva a usarlas.
+func (a *App) bucleSesiones(ctx context.Context) {
+	for {
+		a.cerrarInactivas(ctx, 0)
+		time.Sleep(30 * time.Second)
+	}
 }
 
 func (a *App) auditar(ctx context.Context, operador, ip, accion, objeto string, detalle map[string]any) {
@@ -221,7 +281,7 @@ func (a *App) iniciarSesion(w http.ResponseWriter, r *http.Request) error {
 		a.auditar(ctx, usuario, ip, "sesion.fallida", "operador", map[string]any{"motivo": "cuenta bloqueada"})
 		a.registrarFalloIP(ctx, ip)
 		return &errHTTP{codigo: http.StatusTooManyRequests,
-			msg: "La cuenta está bloqueada temporalmente por intentos fallidos. Inténtalo más tarde."}
+			msg: "Esta cuenta está bloqueada temporalmente por intentos fallidos. Inténtalo más tarde o pide a un administrador que la desbloquee."}
 	}
 	fallo := func(motivo string) error {
 		_, err := a.db.Exec(ctx, `UPDATE operadores SET

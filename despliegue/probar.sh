@@ -87,7 +87,7 @@ anotar() { printf '%s\n' "$*" | enmascarar | tee -a "$EVIDENCIA"; }
 api() {
     local salida
     salida="$(curl -sS -m 90 -X "$1" "$API$2" -H 'X-RC: 1' -H 'Content-Type: application/json' -H "X-Forwarded-For: $IP_PRUEBA" \
-        ${COOKIE:+-H "Cookie: rc_sesion=$COOKIE"} ${3:+--data "$3"} -w '\n%{http_code}' 2>&1)"
+        ${AUTO:+-H "X-RC-Auto: 1"} ${COOKIE:+-H "Cookie: rc_sesion=$COOKIE"} ${3:+--data "$3"} -w '\n%{http_code}' 2>&1)"
     CODIGO="${salida##*$'\n'}"
     CUERPO="${salida%$'\n'*}"
 }
@@ -497,6 +497,123 @@ done
 comprobar "Bloqueo por IP: un acceso correcto pone a cero los fallos anteriores" "$([ "$CODIGO" = 401 ]; echo $?)"
 docker exec radiuscontrol-api radiuscontrol desbloquear-ip "$IP_ATACANTE" >/dev/null
 
+# ---------------------------------------------------------------- cierre de sesiones
+# Se prueba con una cuenta de solo lectura creada para esto: «cerrar las demás»
+# con un administrador cerraría también las sesiones de las personas reales.
+SESIONES_PRUEBA="operador-sesiones-automatica"
+api GET /api/operadores
+for id in $(printf '%s' "$CUERPO" | jq -r ".[] | select(.usuario == \"$SESIONES_PRUEBA\") | .id"); do
+    api DELETE "/api/operadores/$id"
+done
+api POST /api/operadores "$(jq -n --arg u "$SESIONES_PRUEBA" '{usuario:$u,rol:"lectura"}')"
+SESIONES_ID="$(printf '%s' "$CUERPO" | jq -r '.operador.id')"
+SESIONES_CLAVE="$(printf '%s' "$CUERPO" | jq -r '.clave_generada')"
+OCULTAR+=("$SESIONES_CLAVE")
+entrar "$SESIONES_PRUEBA" "$SESIONES_CLAVE"
+S_A="$SESION"
+entrar "$SESIONES_PRUEBA" "$SESIONES_CLAVE"
+S_B="$SESION"
+entrar "$SESIONES_PRUEBA" "$SESIONES_CLAVE"
+S_C="$SESION"
+OCULTAR+=("$S_A" "$S_B" "$S_C")
+COOKIE_ADMIN_PRUEBA="$COOKIE"
+SESIONES_REALES="$(docker compose exec -T postgres psql -U radiuscontrol -d radiuscontrol -At -c \
+    "SELECT count(*) FROM sesiones s JOIN operadores o ON o.id = s.operador_id WHERE o.usuario NOT LIKE '%-automatica'")"
+
+COOKIE="$S_A"
+api GET /api/sesiones
+comprobar "Sesiones: una cuenta de solo lectura ve solo sus propias sesiones" \
+    "$(printf '%s' "$CUERPO" | jq -e --arg u "$SESIONES_PRUEBA" 'length == 3 and all(.[]; .operador == $u)' >/dev/null; echo $?)"
+ID_B="$(printf '%s' "$CUERPO" | jq -r '[.[] | select(.actual | not)] | sort_by(.id)[0].id')"
+api DELETE "/api/sesiones/$ID_B"
+comprobar "Sesiones: cerrar una sesión concreta, 200" "$(codigo_es 200; echo $?)"
+api DELETE /api/sesiones
+comprobar "Sesiones: cerrar todas las demás de una vez, 200" "$(codigo_es 200; echo $?)" "$CUERPO"
+COOKIE="$S_B"
+api GET /api/sesiones
+R1="$CODIGO"
+COOKIE="$S_C"
+api GET /api/sesiones
+R2="$CODIGO"
+comprobar "Sesiones: las sesiones cerradas dejan de valer, 401" "$([ "$R1" = 401 ] && [ "$R2" = 401 ]; echo $?)"
+COOKIE="$S_A"
+api GET /api/sesiones
+comprobar "Sesiones: la sesión desde la que se cierran las demás sigue abierta" \
+    "$(codigo_es 200 && printf '%s' "$CUERPO" | jq -e 'length == 1 and .[0].actual' >/dev/null; echo $?)"
+# ---------- inactividad
+sql() { docker compose exec -T postgres psql -U radiuscontrol -d radiuscontrol -At -c "$1"; }
+minutos_sin_actividad() { sql "SELECT floor(extract(epoch FROM now() - s.ultima_actividad) / 60) FROM sesiones s JOIN operadores o ON o.id = s.operador_id WHERE o.usuario = '$SESIONES_PRUEBA'"; }
+envejecer() { sql "UPDATE sesiones s SET ultima_actividad = now() - interval '$1 minutes' FROM operadores o WHERE o.id = s.operador_id AND o.usuario = '$SESIONES_PRUEBA'" >/dev/null; }
+
+envejecer 29
+AUTO=1
+api GET /api/estado
+AUTO=""
+comprobar "Inactividad: un refresco automático del panel no cuenta como actividad" \
+    "$(codigo_es 200 && [ "$(minutos_sin_actividad)" = 29 ]; echo $?)"
+api GET /api/sesiones
+comprobar "Inactividad: una acción de la persona sí renueva la sesión" \
+    "$(codigo_es 200 && [ "$(minutos_sin_actividad)" = 0 ]; echo $?)"
+envejecer 31
+api GET /api/sesiones
+comprobar "Inactividad: con más de 30 minutos sin actividad la sesión se cierra, 401" \
+    "$(codigo_es 401 && [ "$(printf '%s' "$CUERPO" | jq -r .motivo)" = "inactividad" ]; echo $?)" "$CUERPO"
+comprobar "Inactividad: la sesión cerrada desaparece de la base" \
+    "$([ "$(sql "SELECT count(*) FROM sesiones s JOIN operadores o ON o.id = s.operador_id WHERE o.usuario = '$SESIONES_PRUEBA'")" = 0 ]; echo $?)"
+
+# Sin ninguna petición: la cierra el propio servidor.
+entrar "$SESIONES_PRUEBA" "$SESIONES_CLAVE"
+OCULTAR+=("$SESION")
+envejecer 45
+for _ in $(seq 1 45); do
+    [ "$(sql "SELECT count(*) FROM sesiones s JOIN operadores o ON o.id = s.operador_id WHERE o.usuario = '$SESIONES_PRUEBA'")" = 0 ] && break
+    sleep 1
+done
+comprobar "Inactividad: el servidor cierra la sesión aunque nadie vuelva a usarla" \
+    "$([ "$(sql "SELECT count(*) FROM sesiones s JOIN operadores o ON o.id = s.operador_id WHERE o.usuario = '$SESIONES_PRUEBA'")" = 0 ]; echo $?)"
+
+COOKIE="$COOKIE_ADMIN_PRUEBA"
+api GET "/api/auditoria?buscar=$SESIONES_PRUEBA&tamano=100"
+comprobar "Inactividad: los dos cierres quedan en el registro de actividad con su motivo" \
+    "$(printf '%s' "$CUERPO" | jq -e '[.eventos[] | select(.accion == "sesion.cerrada_por_inactividad" and (.detalle | contains("30 minutos sin actividad")))] | length == 2' >/dev/null; echo $?)" \
+    "$(printf '%s' "$CUERPO" | jq -c '[.eventos[] | select(.accion == "sesion.cerrada_por_inactividad")][0] | {operador, ip, accion, detalle}')"
+
+api GET /api/routers
+comprobar "Sesiones: cerrar las propias no toca las sesiones de otros operadores" \
+    "$(codigo_es 200 && [ "$(docker compose exec -T postgres psql -U radiuscontrol -d radiuscontrol -At -c \
+        "SELECT count(*) FROM sesiones s JOIN operadores o ON o.id = s.operador_id WHERE o.usuario NOT LIKE '%-automatica'")" = "$SESIONES_REALES" ]; echo $?)"
+api DELETE "/api/operadores/$SESIONES_ID"
+
+# ---------------------------------------------------------------- bloqueo por cuenta
+CUENTA_PRUEBA="operador-bloqueo-automatica"
+api GET /api/operadores
+for id in $(printf '%s' "$CUERPO" | jq -r ".[] | select(.usuario == \"$CUENTA_PRUEBA\") | .id"); do
+    api DELETE "/api/operadores/$id"
+done
+api POST /api/operadores "$(jq -n --arg u "$CUENTA_PRUEBA" '{usuario:$u,rol:"lectura"}')"
+CUENTA_ID="$(printf '%s' "$CUERPO" | jq -r '.operador.id')"
+CUENTA_CLAVE="$(printf '%s' "$CUERPO" | jq -r '.clave_generada')"
+OCULTAR+=("$CUENTA_CLAVE")
+# Cada fallo llega desde una dirección distinta: así no salta el bloqueo por IP
+# y se prueba el de la cuenta por separado.
+for n in 1 2 3 4; do
+    entrar "$CUENTA_PRUEBA" "equivocada-$n" "" "192.0.2.$((210 + n))"
+done
+comprobar "Bloqueo por cuenta: los cuatro intentos fallidos responden 401" "$([ "$CODIGO" = 401 ]; echo $?)"
+entrar "$CUENTA_PRUEBA" "$CUENTA_CLAVE" "" "192.0.2.220"
+comprobar "Bloqueo por cuenta: el quinto intento se bloquea aunque venga de otra dirección y con la contraseña correcta, 429" \
+    "$([ "$CODIGO" = 429 ] && [ -z "$SESION" ]; echo $?)" "$CUERPO"
+api GET /api/bloqueos
+comprobar "Bloqueo por cuenta: el panel lista la cuenta bloqueada junto a las direcciones" \
+    "$(printf '%s' "$CUERPO" | jq -e --arg u "$CUENTA_PRUEBA" 'any(.cuentas[]; .usuario == $u and .intentos == 4)' >/dev/null; echo $?)" \
+    "$(printf '%s' "$CUERPO" | jq -c '{cuentas: [.cuentas[] | {usuario, intentos}], regla}')"
+api POST "/api/operadores/$CUENTA_ID/desbloquear" '{}'
+comprobar "Bloqueo por cuenta: un administrador puede desbloquearla, 200" "$(codigo_es 200; echo $?)"
+entrar "$CUENTA_PRUEBA" "$CUENTA_CLAVE" "" "192.0.2.220"
+comprobar "Bloqueo por cuenta: tras desbloquear, la cuenta vuelve a entrar, 200" "$([ "$CODIGO" = 200 ] && [ -n "$SESION" ]; echo $?)"
+OCULTAR+=("$SESION")
+api DELETE "/api/operadores/$CUENTA_ID"
+
 # Por el camino real (el proxy web) no se puede fingir otra dirección.
 curl -sk -m 30 -o /dev/null -X POST "https://$IP_PUBLICA/api/sesion" -H 'X-RC: 1' -H 'Content-Type: application/json' \
     -H 'X-Forwarded-For: 203.0.113.99' --data '{"usuario":"prueba-direccion-fingida","clave":"x"}'
@@ -530,7 +647,7 @@ aplicar
 comprobar "Limpieza: datos de prueba borrados y configuración aplicada" "$?"
 docker exec "$RADIUS" rm -f /tmp/secreto /tmp/secreto-malo /tmp/secreto-raro
 api DELETE /api/sesion
-docker compose exec -T postgres psql -q -U radiuscontrol -d radiuscontrol -c     "DELETE FROM autenticaciones WHERE router_nombre LIKE '$ROUTER_PRUEBA%' OR usuario IN ('$USUARIO_PRUEBA', 'no-existe', 'DEFAULT'); DELETE FROM operadores WHERE usuario = '$ADMIN_PRUEBA'; DELETE FROM intentos_ip WHERE ip IN ('$IP_PRUEBA', '$IP_ATACANTE', '$IP_PUBLICA'); DELETE FROM auditoria WHERE operador IN ('$OPERADOR_PRUEBA', '$ADMIN_PRUEBA', 'prueba-direccion-fingida', 'usuario-que-no-existe') OR ip IN ('$IP_PRUEBA', '$IP_ATACANTE') OR objeto IN ('$IP_ATACANTE', '$IP_PRUEBA') OR objeto = '$ADMIN_PRUEBA' OR objeto IN ('$OPERADOR_PRUEBA', 'Empresa de prueba') OR objeto LIKE '$ROUTER_PRUEBA%'; DELETE FROM empresas e WHERE e.nombre = 'Empresa de prueba' AND NOT EXISTS (SELECT 1 FROM routers r WHERE r.empresa_id = e.id)" >/dev/null 2>&1
+docker compose exec -T postgres psql -q -U radiuscontrol -d radiuscontrol -c     "DELETE FROM autenticaciones WHERE router_nombre LIKE '$ROUTER_PRUEBA%' OR usuario IN ('$USUARIO_PRUEBA', 'no-existe', 'DEFAULT'); DELETE FROM operadores WHERE usuario = '$ADMIN_PRUEBA'; DELETE FROM intentos_ip WHERE ip IN ('$IP_PRUEBA', '$IP_ATACANTE', '$IP_PUBLICA') OR ip LIKE '192.0.2.2%'; DELETE FROM auditoria WHERE ip LIKE '192.0.2.2%' OR operador IN ('operador-bloqueo-automatica', 'operador-sesiones-automatica') OR objeto IN ('operador-bloqueo-automatica', 'operador-sesiones-automatica', 'todas las demás'); DELETE FROM auditoria WHERE operador IN ('$OPERADOR_PRUEBA', '$ADMIN_PRUEBA', 'prueba-direccion-fingida', 'usuario-que-no-existe') OR ip IN ('$IP_PRUEBA', '$IP_ATACANTE') OR objeto IN ('$IP_ATACANTE', '$IP_PRUEBA') OR objeto = '$ADMIN_PRUEBA' OR objeto IN ('$OPERADOR_PRUEBA', 'Empresa de prueba') OR objeto LIKE '$ROUTER_PRUEBA%'; DELETE FROM empresas e WHERE e.nombre = 'Empresa de prueba' AND NOT EXISTS (SELECT 1 FROM routers r WHERE r.empresa_id = e.id)" >/dev/null 2>&1
 
 anotar ""
 anotar "Evidencia: $EVIDENCIA"

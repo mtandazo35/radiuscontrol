@@ -5,7 +5,7 @@ import { api, ErrorApi, type Operador } from "@/lib/api";
 import { useApp } from "../contexto";
 
 export default function Login() {
-  const { setOperador } = useApp();
+  const { setOperador, motivoSalida } = useApp();
   const [usuario, setUsuario] = React.useState("");
   const [clave, setClave] = React.useState("");
   const [codigo, setCodigo] = React.useState("");
@@ -40,6 +40,11 @@ export default function Login() {
           <ShieldCheck className="size-6 text-primary" />
           <h1 className="text-xl font-semibold tracking-tight">RadiusControl</h1>
         </div>
+        {motivoSalida && (
+          <p role="status" className="mb-4 rounded-md border border-warning/50 p-3 text-sm text-warning">
+            {motivoSalida}
+          </p>
+        )}
         <form onSubmit={entrar} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="usuario">Usuario</Label>

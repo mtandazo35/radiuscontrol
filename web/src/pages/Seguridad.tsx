@@ -2,7 +2,7 @@ import { Plus, UserCog } from "lucide-react";
 import QRCode from "qrcode";
 import * as React from "react";
 import { Badge, Button, Card, Dialog, DialogContent, DialogFooter, Input, Label, Paginacion, Table, Td, Th } from "@/components/ui";
-import { api, type Bloqueos, type OperadorDetalle, type PaginaEventos, type Sesion } from "@/lib/api";
+import { api, type Bloqueos as DatosBloqueos, type OperadorDetalle, type PaginaEventos, type Sesion } from "@/lib/api";
 import { fecha } from "@/lib/utils";
 import { useApp } from "../contexto";
 
@@ -16,6 +16,7 @@ const nombreAccion: Record<string, string> = {
   "sesion.fallida": "Intento de acceso fallido",
   "sesion.cerrada": "Cierre de sesión",
   "sesion.revocada": "Sesión cerrada por un operador",
+  "sesion.cerrada_por_inactividad": "Sesión cerrada por inactividad",
   "cuenta.clave_cambiada": "Cambio de contraseña propia",
   "cuenta.clave_rechazada": "Cambio de contraseña rechazado",
   "cuenta.doble_factor_activado": "Doble factor activado",
@@ -446,19 +447,24 @@ function Operadores() {
 }
 
 function Sesiones() {
-  const { operador, avisarError } = useApp();
+  const { operador, setOperador, avisar, avisarError, confirmar } = useApp();
   const [lista, setLista] = React.useState<Sesion[] | null>(null);
 
-  const cargar = React.useCallback(async () => {
-    try {
-      setLista(await api<Sesion[]>("GET", "/sesiones"));
-    } catch (e) {
-      avisarError(e);
-    }
-  }, [avisarError]);
+  const cargar = React.useCallback(
+    async (auto = false) => {
+      try {
+        setLista(await api<Sesion[]>("GET", "/sesiones", undefined, { auto }));
+      } catch (e) {
+        if (!auto) avisarError(e);
+      }
+    },
+    [avisarError],
+  );
 
   React.useEffect(() => {
     cargar();
+    const t = window.setInterval(() => cargar(true), 15000);
+    return () => window.clearInterval(t);
   }, [cargar]);
 
   const cerrar = async (s: Sesion) => {
@@ -470,10 +476,46 @@ function Sesiones() {
     }
   };
 
+  const cerrarLaMia = async () => {
+    if (!(await confirmar("Cerrar esta sesión", "Saldrás del panel y tendrás que volver a entrar.", "Cerrar sesión"))) return;
+    try {
+      await api("DELETE", "/sesion");
+    } finally {
+      setOperador(null);
+    }
+  };
+
+  const cerrarLasDemas = async () => {
+    const admin = operador?.rol === "administrador";
+    const ok = await confirmar(
+      "Cerrar las demás sesiones",
+      admin
+        ? "Se cerrarán todas las sesiones de todos los operadores, menos esta. Quien esté usando el panel tendrá que volver a entrar."
+        : "Se cerrarán todas tus sesiones en otros equipos o navegadores, menos esta.",
+      "Cerrar las demás",
+      true,
+    );
+    if (!ok) return;
+    try {
+      const r = await api<{ cerradas: number }>("DELETE", "/sesiones");
+      await cargar();
+      avisar({ titulo: "Sesiones cerradas", mensaje: `Se cerraron ${r.cerradas} sesión(es).` });
+    } catch (e) {
+      avisarError(e);
+    }
+  };
+
+  const otras = (lista ?? []).filter((s) => !s.actual).length;
+
   return (
     <Seccion
       titulo="Sesiones abiertas"
-      descripcion={operador?.rol === "administrador" ? "Quién tiene el panel abierto ahora mismo y desde dónde. Una sesión dura 12 horas." : "Tus sesiones abiertas. Una sesión dura 12 horas."}
+      descripcion={operador?.rol === "administrador" ? "Quién tiene el panel abierto ahora mismo y desde dónde. Una sesión se cierra sola tras 30 minutos sin actividad y dura como máximo 12 horas." : "Tus sesiones abiertas. Una sesión se cierra sola tras 30 minutos sin actividad y dura como máximo 12 horas."}
+      accion={
+        <Button size="sm" variant="outline" disabled={otras === 0} onClick={cerrarLasDemas}>
+          Cerrar las demás sesiones
+        </Button>
+      }
     >
       <Table>
         <thead>
@@ -481,7 +523,8 @@ function Sesiones() {
             <Th>Operador</Th>
             <Th>Dirección IP</Th>
             <Th>Abierta</Th>
-            <Th>Caduca</Th>
+            <Th>Última actividad</Th>
+            <Th>Caduca como máximo</Th>
             <Th className="text-right">Acciones</Th>
           </tr>
         </thead>
@@ -491,15 +534,15 @@ function Sesiones() {
               <Td className="font-medium">{s.operador}</Td>
               <Td className="font-mono text-xs">{s.ip}</Td>
               <Td className="whitespace-nowrap text-muted-foreground">{fecha(s.creada)}</Td>
+              <Td className="whitespace-nowrap text-muted-foreground">{fecha(s.ultima_actividad)}</Td>
               <Td className="whitespace-nowrap text-muted-foreground">{fecha(s.expira)}</Td>
-              <Td className="text-right">
-                {s.actual ? (
-                  <Badge>Esta sesión</Badge>
-                ) : (
-                  <Button size="sm" variant="outline" onClick={() => cerrar(s)}>
+              <Td>
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  {s.actual && <Badge>Esta sesión</Badge>}
+                  <Button size="sm" variant="outline" onClick={() => (s.actual ? cerrarLaMia() : cerrar(s))}>
                     Cerrar sesión
                   </Button>
-                )}
+                </div>
               </Td>
             </tr>
           ))}
@@ -509,27 +552,32 @@ function Sesiones() {
   );
 }
 
-function DireccionesBloqueadas() {
+// Bloqueos por intentos fallidos, tanto de direcciones IP como de cuentas, con
+// su desbloqueo para los falsos positivos.
+function Bloqueos({ onCambio }: { onCambio: number }) {
   const { avisarError } = useApp();
-  const [datos, setDatos] = React.useState<Bloqueos | null>(null);
+  const [datos, setDatos] = React.useState<DatosBloqueos | null>(null);
 
-  const cargar = React.useCallback(async () => {
-    try {
-      setDatos(await api<Bloqueos>("GET", "/bloqueos"));
-    } catch (e) {
-      avisarError(e);
-    }
-  }, [avisarError]);
+  const cargar = React.useCallback(
+    async (auto = false) => {
+      try {
+        setDatos(await api<DatosBloqueos>("GET", "/bloqueos", undefined, { auto }));
+      } catch (e) {
+        if (!auto) avisarError(e);
+      }
+    },
+    [avisarError],
+  );
 
   React.useEffect(() => {
     cargar();
-    const t = window.setInterval(cargar, 15000);
+    const t = window.setInterval(() => cargar(true), 15000);
     return () => window.clearInterval(t);
-  }, [cargar]);
+  }, [cargar, onCambio]);
 
-  const desbloquear = async (ip: string) => {
+  const desbloquear = async (accion: () => Promise<unknown>) => {
     try {
-      await api("POST", "/bloqueos/desbloquear", { ip });
+      await accion();
       await cargar();
     } catch (e) {
       avisarError(e);
@@ -537,41 +585,59 @@ function DireccionesBloqueadas() {
   };
 
   const regla = datos?.regla;
+  const vacio = datos && datos.bloqueos.length === 0 && datos.cuentas.length === 0;
   return (
     <Seccion
-      titulo="Direcciones bloqueadas"
+      titulo="Bloqueos por intentos fallidos"
       descripcion={
         regla
-          ? `Una dirección IP que falla el inicio de sesión ${regla.intentos} veces en ${regla.ventana_minutos} minutos queda bloqueada ${regla.bloqueo_minutos} minutos: el intento siguiente ya no se atiende, sea cual sea la cuenta. Las sesiones ya abiertas no se ven afectadas.`
-          : "Direcciones IP con el inicio de sesión bloqueado por intentos fallidos."
+          ? `Una dirección IP que falla el inicio de sesión ${regla.intentos} veces en ${regla.ventana_minutos} minutos queda bloqueada ${regla.bloqueo_minutos} minutos, sea cual sea la cuenta. Una cuenta con ${regla.intentos_cuenta} fallos seguidos queda bloqueada ${regla.bloqueo_cuenta_m} minutos, venga de donde venga. Si es un falso positivo, desbloquéalo aquí. Las sesiones ya abiertas no se ven afectadas.`
+          : "Direcciones IP y cuentas con el inicio de sesión bloqueado por intentos fallidos."
       }
     >
       <Table>
         <thead>
           <tr>
-            <Th>Dirección IP</Th>
+            <Th>Tipo</Th>
+            <Th>Bloqueado</Th>
             <Th>Intentos fallidos</Th>
-            <Th>Bloqueada desde</Th>
             <Th>Hasta</Th>
             <Th className="text-right">Acciones</Th>
           </tr>
         </thead>
         <tbody>
-          {datos?.bloqueos.length === 0 && (
+          {vacio && (
             <tr>
               <Td colSpan={5} className="py-8 text-center text-muted-foreground">
-                No hay ninguna dirección bloqueada.
+                No hay ninguna dirección ni cuenta bloqueada.
               </Td>
             </tr>
           )}
           {datos?.bloqueos.map((b) => (
-            <tr key={b.ip}>
+            <tr key={"ip-" + b.ip}>
+              <Td>
+                <Badge variant="destructive">Dirección IP</Badge>
+              </Td>
               <Td className="font-mono text-xs">{b.ip}</Td>
               <Td>{b.intentos}</Td>
-              <Td className="whitespace-nowrap text-muted-foreground">{fecha(b.desde)}</Td>
               <Td className="whitespace-nowrap text-muted-foreground">{fecha(b.hasta)}</Td>
               <Td className="text-right">
-                <Button size="sm" variant="outline" onClick={() => desbloquear(b.ip)}>
+                <Button size="sm" variant="outline" onClick={() => desbloquear(() => api("POST", "/bloqueos/desbloquear", { ip: b.ip }))}>
+                  Desbloquear
+                </Button>
+              </Td>
+            </tr>
+          ))}
+          {datos?.cuentas.map((c) => (
+            <tr key={"cuenta-" + c.id}>
+              <Td>
+                <Badge variant="destructive">Cuenta</Badge>
+              </Td>
+              <Td className="font-medium">{c.usuario}</Td>
+              <Td>{c.intentos}</Td>
+              <Td className="whitespace-nowrap text-muted-foreground">{fecha(c.hasta)}</Td>
+              <Td className="text-right">
+                <Button size="sm" variant="outline" onClick={() => desbloquear(() => api("POST", `/operadores/${c.id}/desbloquear`, {}))}>
                   Desbloquear
                 </Button>
               </Td>
@@ -688,7 +754,7 @@ export default function Seguridad() {
       </div>
       {admin ? <Operadores /> : <TarjetaMiCuenta />}
       <Sesiones />
-      {admin && <DireccionesBloqueadas />}
+      {admin && <Bloqueos onCambio={0} />}
       {admin && <Actividad />}
     </div>
   );

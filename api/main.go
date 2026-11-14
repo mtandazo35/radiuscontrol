@@ -132,6 +132,7 @@ func main() {
 	}
 
 	go app.bucleRegistro(ctx)
+	go app.bucleSesiones(ctx)
 
 	srv := &http.Server{
 		Addr:              ":8080",
@@ -343,6 +344,7 @@ func (a *App) rutas() http.Handler {
 	m.HandleFunc("POST /api/cuenta/totp/desactivar", a.privado(a.desactivarTOTP))
 	m.HandleFunc("GET /api/sesiones", a.privado(a.listarSesiones))
 	m.HandleFunc("DELETE /api/sesiones/{id}", a.privado(a.revocarSesion))
+	m.HandleFunc("DELETE /api/sesiones", a.privado(a.cerrarOtrasSesiones))
 	m.HandleFunc("GET /api/operadores", a.admin(a.listarOperadores))
 	m.HandleFunc("POST /api/operadores", a.admin(a.crearOperador))
 	m.HandleFunc("PUT /api/operadores/{id}", a.admin(a.editarOperador))
