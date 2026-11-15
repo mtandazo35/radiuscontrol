@@ -1,7 +1,7 @@
 import { Plus, Users } from "lucide-react";
 import * as React from "react";
 import { accesosDe, BloqueAccesos, CambiosMasivos, permisosDe, type Permisos } from "@/components/Accesos";
-import { Badge, Button, Card, Dialog, DialogContent, DialogFooter, Input, Label, Table, Td, Textarea, Th, Copiable } from "@/components/ui";
+import { Badge, Button, Card, Copiable, Dialog, DialogContent, DialogFooter, Input, Label, Select, Table, Td, Textarea, Th, ThOrden, comparar, useOrden } from "@/components/ui";
 import { api, type Empresa, type ModoAcceso, type RespuestaRouter, type Router, type Usuario } from "@/lib/api";
 import { fecha } from "@/lib/utils";
 import { useApp } from "../contexto";
@@ -74,7 +74,34 @@ export default function Routers() {
   }, [cargar]);
 
   // El filtro de la barra superior deja a la vista un solo router.
-  const visibles = lista && routerId !== null ? lista.filter((r) => r.id === routerId) : lista;
+  const [buscar, setBuscar] = React.useState("");
+  const [fEmpresa, setFEmpresa] = React.useState("");
+  const [fAcceso, setFAcceso] = React.useState("");
+  const [fEstado, setFEstado] = React.useState("");
+  const { orden, ordenarPor } = useOrden<"nombre" | "empresa" | "estado" | "acceso" | "secreto">("nombre");
+  const conFiltros = Boolean(buscar.trim() || fEmpresa || fAcceso || fEstado);
+  const limpiarFiltros = () => {
+    setBuscar("");
+    setFEmpresa("");
+    setFAcceso("");
+    setFEstado("");
+  };
+  // Empresas que de verdad tienen routers, para el desplegable.
+  const empresasEnUso = React.useMemo(() => [...new Set((lista ?? []).map((r) => r.empresa).filter(Boolean))].sort(comparar), [lista]);
+
+  const visibles = React.useMemo(() => {
+    if (!lista) return lista;
+    const q = buscar.trim().toLowerCase();
+    const valor = (r: Router) =>
+      orden.campo === "nombre" ? r.nombre : orden.campo === "empresa" ? r.empresa : orden.campo === "estado" ? !r.activo : orden.campo === "acceso" ? r.acceso : r.secreto_rotado;
+    return lista
+      .filter((r) => routerId === null || r.id === routerId)
+      .filter((r) => !q || [r.nombre, r.descripcion, r.empresa, ...r.redes].some((t) => t.toLowerCase().includes(q)))
+      .filter((r) => !fEmpresa || (fEmpresa === "-" ? !r.empresa : r.empresa === fEmpresa))
+      .filter((r) => !fAcceso || r.acceso === fAcceso)
+      .filter((r) => !fEstado || r.activo === (fEstado === "activo"))
+      .sort((x, y) => (comparar(valor(x), valor(y)) || comparar(x.nombre, y.nombre)) * (orden.asc ? 1 : -1));
+  }, [lista, routerId, buscar, fEmpresa, fAcceso, fEstado, orden]);
 
   const tras = async () => {
     await cargar();
@@ -199,16 +226,65 @@ export default function Routers() {
         </div>
       </div>
 
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          className="max-w-xs"
+          placeholder="Buscar nombre, empresa o red"
+          aria-label="Buscar routers"
+          value={buscar}
+          onChange={(e) => setBuscar(e.target.value)}
+        />
+        <Select aria-label="Empresa" value={fEmpresa} onChange={(e) => setFEmpresa(e.target.value)}>
+          <option value="">Todas las empresas</option>
+          {empresasEnUso.map((e) => (
+            <option key={e} value={e}>
+              {e}
+            </option>
+          ))}
+          <option value="-">Sin empresa</option>
+        </Select>
+        <Select aria-label="Acceso" value={fAcceso} onChange={(e) => setFAcceso(e.target.value)}>
+          <option value="">Cualquier acceso</option>
+          <option value="general">General</option>
+          <option value="restringido">Restringido</option>
+        </Select>
+        <Select aria-label="Estado" value={fEstado} onChange={(e) => setFEstado(e.target.value)}>
+          <option value="">Cualquier estado</option>
+          <option value="activo">Activos</option>
+          <option value="suspendido">Suspendidos</option>
+        </Select>
+        {conFiltros && (
+          <Button variant="ghost" size="sm" onClick={limpiarFiltros}>
+            Limpiar filtros
+          </Button>
+        )}
+        {lista && visibles && (
+          <span className="ml-auto font-mono text-xs text-muted-foreground">
+            {visibles.length} de {lista.length}
+          </span>
+        )}
+      </div>
+
       <Card>
         <Table>
           <thead>
             <tr>
-              <Th>Nombre</Th>
-              <Th>Empresa</Th>
+              <ThOrden campo="nombre" orden={orden} onOrden={ordenarPor}>
+                Nombre
+              </ThOrden>
+              <ThOrden campo="empresa" orden={orden} onOrden={ordenarPor}>
+                Empresa
+              </ThOrden>
               <Th>Redes de origen</Th>
-              <Th>Estado</Th>
-              <Th>Acceso</Th>
-              <Th>Secreto rotado</Th>
+              <ThOrden campo="estado" orden={orden} onOrden={ordenarPor}>
+                Estado
+              </ThOrden>
+              <ThOrden campo="acceso" orden={orden} onOrden={ordenarPor}>
+                Acceso
+              </ThOrden>
+              <ThOrden campo="secreto" orden={orden} onOrden={ordenarPor}>
+                Secreto rotado
+              </ThOrden>
               <Th className="text-right">Acciones</Th>
             </tr>
           </thead>
@@ -216,7 +292,7 @@ export default function Routers() {
             {visibles?.length === 0 && (
               <tr>
                 <Td colSpan={7} className="py-10 text-center text-muted-foreground">
-                  Todavía no hay routers. Crea el primero con «Nuevo router».
+                  {lista?.length ? "Ningún router coincide con la búsqueda o los filtros." : "Todavía no hay routers. Crea el primero con «Nuevo router»."}
                 </Td>
               </tr>
             )}

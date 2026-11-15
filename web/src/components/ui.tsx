@@ -1,7 +1,7 @@
 // Componentes base al estilo de shadcn/ui (Radix + Tailwind + variantes).
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { cva, type VariantProps } from "class-variance-authority";
-import { Check, Copy, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, ChevronsUpDown, Copy, X } from "lucide-react";
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
@@ -132,6 +132,72 @@ export function Copiable({ texto, className }: { texto: string | null | undefine
         {hecho ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />}
       </button>
     </span>
+  );
+}
+
+export function Select({ className, ...props }: React.SelectHTMLAttributes<HTMLSelectElement>) {
+  return (
+    <select
+      className={cn(
+        "h-9 rounded-md border border-input bg-background px-2.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+// Orden de una tabla: qué columna y en qué sentido. Pulsar la misma columna
+// invierte el sentido; pulsar otra empieza en ascendente.
+export interface Orden<C extends string> {
+  campo: C;
+  asc: boolean;
+}
+
+export function useOrden<C extends string>(inicial: C) {
+  const [orden, setOrden] = React.useState<Orden<C>>({ campo: inicial, asc: true });
+  const ordenarPor = React.useCallback((campo: C) => setOrden((o) => ({ campo, asc: o.campo === campo ? !o.asc : true })), []);
+  return { orden, ordenarPor };
+}
+
+// Compara textos como se leen en español (sin distinguir mayúsculas ni tildes
+// y con los números en su orden natural).
+const comparador = new Intl.Collator("es", { sensitivity: "base", numeric: true });
+export function comparar(a: string | number | boolean, b: string | number | boolean) {
+  if (typeof a === "string" && typeof b === "string") return comparador.compare(a, b);
+  return Number(a) - Number(b);
+}
+
+export function ThOrden<C extends string>({
+  campo,
+  orden,
+  onOrden,
+  className,
+  children,
+}: {
+  campo: C;
+  orden: Orden<C>;
+  onOrden: (campo: C) => void;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  const activo = orden.campo === campo;
+  const Icono = !activo ? ChevronsUpDown : orden.asc ? ArrowUp : ArrowDown;
+  return (
+    <Th className={className} aria-sort={activo ? (orden.asc ? "ascending" : "descending") : "none"}>
+      <button
+        type="button"
+        onClick={() => onOrden(campo)}
+        title="Ordenar por esta columna"
+        className={cn(
+          "-mx-1 inline-flex items-center gap-1 rounded px-1 py-0.5 uppercase tracking-wider transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          activo && "text-foreground",
+        )}
+      >
+        {children}
+        <Icono className={cn("size-3", !activo && "opacity-50")} aria-hidden="true" />
+      </button>
+    </Th>
   );
 }
 

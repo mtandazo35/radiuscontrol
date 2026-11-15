@@ -1,6 +1,6 @@
 import { Plus } from "lucide-react";
 import * as React from "react";
-import { Badge, Button, Card, Dialog, DialogContent, DialogFooter, Input, Label, Table, Td, Th } from "@/components/ui";
+import { Badge, Button, Card, Dialog, DialogContent, DialogFooter, Input, Label, Select, Table, Td, Th, ThOrden, comparar, useOrden } from "@/components/ui";
 import { api, type RespuestaUsuario, type Usuario } from "@/lib/api";
 import { fecha } from "@/lib/utils";
 import { useApp } from "../contexto";
@@ -23,6 +23,23 @@ export default function Usuarios() {
   const [form, setForm] = React.useState<Formulario | null>(null);
   const [ocupado, setOcupado] = React.useState(false);
   const [otroGrupo, setOtroGrupo] = React.useState(false);
+
+  const [buscar, setBuscar] = React.useState("");
+  const [fGrupo, setFGrupo] = React.useState("");
+  const [fEstado, setFEstado] = React.useState("");
+  const { orden, ordenarPor } = useOrden<"usuario" | "grupo" | "estado" | "clave">("usuario");
+  const conFiltros = Boolean(buscar.trim() || fGrupo || fEstado);
+  const gruposEnUso = React.useMemo(() => [...new Set((lista ?? []).map((u) => u.grupo))].sort(comparar), [lista]);
+  const visibles = React.useMemo(() => {
+    if (!lista) return lista;
+    const q = buscar.trim().toLowerCase();
+    const valor = (u: Usuario) => (orden.campo === "usuario" ? u.usuario : orden.campo === "grupo" ? u.grupo : orden.campo === "estado" ? !u.activo : u.clave_cambiada);
+    return lista
+      .filter((u) => !q || u.usuario.toLowerCase().includes(q) || u.nombre_completo.toLowerCase().includes(q))
+      .filter((u) => !fGrupo || u.grupo === fGrupo)
+      .filter((u) => !fEstado || u.activo === (fEstado === "activo"))
+      .sort((x, y) => (comparar(valor(x), valor(y)) || comparar(x.usuario, y.usuario)) * (orden.asc ? 1 : -1));
+  }, [lista, buscar, fGrupo, fEstado, orden]);
 
   const abrir = (f: Formulario) => {
     setOtroGrupo(!gruposBase.includes(f.grupo));
@@ -135,26 +152,75 @@ export default function Usuarios() {
         </Button>
       </div>
 
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          className="max-w-xs"
+          placeholder="Buscar usuario o nombre"
+          aria-label="Buscar usuarios"
+          value={buscar}
+          onChange={(e) => setBuscar(e.target.value)}
+        />
+        <Select aria-label="Grupo" value={fGrupo} onChange={(e) => setFGrupo(e.target.value)}>
+          <option value="">Todos los grupos</option>
+          {gruposEnUso.map((g) => (
+            <option key={g} value={g}>
+              {g}
+            </option>
+          ))}
+        </Select>
+        <Select aria-label="Estado" value={fEstado} onChange={(e) => setFEstado(e.target.value)}>
+          <option value="">Cualquier estado</option>
+          <option value="activo">Activos</option>
+          <option value="suspendido">Suspendidos</option>
+        </Select>
+        {conFiltros && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setBuscar("");
+              setFGrupo("");
+              setFEstado("");
+            }}
+          >
+            Limpiar filtros
+          </Button>
+        )}
+        {lista && visibles && (
+          <span className="ml-auto font-mono text-xs text-muted-foreground">
+            {visibles.length} de {lista.length}
+          </span>
+        )}
+      </div>
+
       <Card>
         <Table>
           <thead>
             <tr>
-              <Th>Usuario</Th>
-              <Th>Grupo</Th>
-              <Th>Estado</Th>
-              <Th>Contraseña cambiada</Th>
+              <ThOrden campo="usuario" orden={orden} onOrden={ordenarPor}>
+                Usuario
+              </ThOrden>
+              <ThOrden campo="grupo" orden={orden} onOrden={ordenarPor}>
+                Grupo
+              </ThOrden>
+              <ThOrden campo="estado" orden={orden} onOrden={ordenarPor}>
+                Estado
+              </ThOrden>
+              <ThOrden campo="clave" orden={orden} onOrden={ordenarPor}>
+                Contraseña cambiada
+              </ThOrden>
               <Th className="text-right">Acciones</Th>
             </tr>
           </thead>
           <tbody>
-            {lista?.length === 0 && (
+            {visibles?.length === 0 && (
               <tr>
                 <Td colSpan={5} className="py-10 text-center text-muted-foreground">
-                  Todavía no hay usuarios. Crea el primero con «Nuevo usuario».
+                  {lista?.length ? "Ningún usuario coincide con la búsqueda o los filtros." : "Todavía no hay usuarios. Crea el primero con «Nuevo usuario»."}
                 </Td>
               </tr>
             )}
-            {lista?.map((u) => (
+            {visibles?.map((u) => (
               <tr key={u.id}>
                 <Td>
                   <div className="whitespace-nowrap font-medium">{u.usuario}</div>

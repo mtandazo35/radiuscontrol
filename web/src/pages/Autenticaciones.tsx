@@ -58,20 +58,18 @@ export default function Autenticaciones() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <BotonVaciar
-            registro="autenticaciones"
-            onHecho={() => {
-              setPagina(1);
-              cargar(true);
-            }}
-          />
-        </div>
-        <p className="text-sm text-muted-foreground">
+      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+        <p className="min-w-0 max-w-4xl flex-1 basis-80 text-sm text-muted-foreground">
           Cada intento de login que FreeRADIUS aceptó o rechazó, en hora de Ecuador. La primera página se actualiza sola. Los paquetes de
           orígenes no autorizados o con secreto incorrecto no aparecen aquí: FreeRADIUS los descarta sin responder.
         </p>
+        <BotonVaciar
+          registro="autenticaciones"
+          onHecho={() => {
+            setPagina(1);
+            cargar(true);
+          }}
+        />
       </div>
 
       <div className="flex flex-wrap gap-2">
