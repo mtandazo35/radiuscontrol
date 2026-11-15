@@ -108,11 +108,10 @@ hacer_respaldo() {
 migraciones() { sql -c "SELECT count(*) FROM migraciones_aplicadas" 2>/dev/null || echo "?"; }
 
 # Cada construcción deja imágenes sin usar y caché; sin esto acaban llenando el
-# disco. Se conserva algo de caché para que la siguiente construcción sea rápida.
+# disco. La siguiente construcción tarda unos minutos más, pero el disco no se llena.
 limpiar_docker() {
     docker image prune -f >/dev/null 2>&1 || true
-    docker builder prune -f --keep-storage 1500MB >/dev/null 2>&1 \
-        || docker builder prune -f --filter until=24h >/dev/null 2>&1 || true
+    docker builder prune -af >/dev/null 2>&1 || true
 }
 
 # ------------------------------------------------------------------ instalar

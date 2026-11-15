@@ -99,10 +99,10 @@ sleep 4
 docker compose ps
 
 # Imágenes sin usar y caché de construcciones anteriores: sin esto acaban
-# llenando el disco. Se conserva algo de caché para la siguiente construcción.
+# llenando el disco (8 GB en pocos días de uso). La siguiente construcción
+# tarda unos minutos más.
 docker image prune -f >/dev/null 2>&1 || true
-docker builder prune -f --keep-storage 1500MB >/dev/null 2>&1 \
-    || docker builder prune -f --filter until=24h >/dev/null 2>&1 || true
+docker builder prune -af >/dev/null 2>&1 || true
 
 echo "== 6. Firewall"
 # El instalador no decide la seguridad del servidor: esas reglas las carga el
