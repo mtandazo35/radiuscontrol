@@ -1,7 +1,8 @@
+import { Plus } from "lucide-react";
 import * as React from "react";
-import { Badge, Button, Card, Input, Label } from "@/components/ui";
+import { Badge, Button, Card, Dialog, DialogContent, DialogFooter, Input, Label } from "@/components/ui";
 import { api, type AccesoAjeno, type AccesoGestionado, type AccesosServidor, type ServicioAcceso } from "@/lib/api";
-import { fecha } from "@/lib/utils";
+import { cn, fecha } from "@/lib/utils";
 import { useApp } from "../contexto";
 
 // Formas de escribir «abierto a todo el mundo»: se tratan igual que el botón
@@ -50,16 +51,20 @@ interface PropsSeccion {
 
 function Seccion({ servicio, titulo, tuIp, gestionadas, ajenas, ocupado, onAlta, onQuitar }: PropsSeccion) {
   const { avisar, confirmar } = useApp();
+  const [abierto, setAbierto] = React.useState(false);
   const [red, setRed] = React.useState("");
   const [descripcion, setDescripcion] = React.useState("");
+
+  const abrir = () => {
+    setRed("");
+    setDescripcion("");
+    setAbierto(true);
+  };
 
   const abrirATodos = async () => {
     const ok = await confirmar("Abrir a cualquier dirección", riesgoAbrir[servicio], "Abrir a cualquier dirección", true);
     if (!ok) return;
-    if (await onAlta(servicio, "cualquiera", descripcion.trim())) {
-      setRed("");
-      setDescripcion("");
-    }
+    if (await onAlta(servicio, "cualquiera", descripcion.trim())) setAbierto(false);
   };
 
   const enviar = async (e: React.FormEvent) => {
@@ -76,41 +81,68 @@ function Seccion({ servicio, titulo, tuIp, gestionadas, ajenas, ocupado, onAlta,
       await abrirATodos();
       return;
     }
-    if (await onAlta(servicio, valor, descripcion.trim())) {
-      setRed("");
-      setDescripcion("");
-    }
+    if (await onAlta(servicio, valor, descripcion.trim())) setAbierto(false);
   };
 
   const yaAbierto = gestionadas.some((g) => esCualquiera(g.red));
   const vacio = gestionadas.length === 0 && ajenas.length === 0;
+  // Todas las filas comparten la misma rejilla: el texto a la izquierda y la
+  // acción a la derecha, con el mismo ancho, para que queden alineadas.
+  const fila = "grid min-h-[4.5rem] grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5";
+  const accion = "w-44 justify-center";
 
   return (
-    <section className="space-y-4 p-4">
-      <h3 className="text-sm font-semibold">{titulo}</h3>
+    <section className="space-y-3 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold">{titulo}</h3>
+        <Button size="sm" disabled={ocupado} onClick={abrir}>
+          <Plus /> Agregar acceso
+        </Button>
+      </div>
 
-      {vacio && (
+      {vacio ? (
         <p className="rounded-md border border-warning/50 p-3 text-xs text-warning" role="status">
           No hay ninguna regla: nadie puede llegar a {nombreServicio[servicio]} mientras el firewall esté activo.
         </p>
-      )}
-
-      {gestionadas.length > 0 && (
-        <ul className="space-y-2">
+      ) : (
+        <ul className="divide-y rounded-md border">
           {gestionadas.map((g) => (
-            <li key={g.id} className="flex flex-wrap items-start justify-between gap-3 rounded-md border p-3">
-              <div className="min-w-0 space-y-1">
+            <li key={`g-${g.id}`} className={fila}>
+              <div className="min-w-0 space-y-0.5">
                 <div className="flex flex-wrap items-center gap-2">
                   <Red red={g.red} />
                   {g.aplicada ? <Badge variant="success">Aplicada</Badge> : <Badge variant="warning">Aplicando…</Badge>}
                 </div>
-                {g.descripcion && <p className="break-words text-sm">{g.descripcion}</p>}
-                <p className="text-xs text-muted-foreground">
-                  Añadida por {g.operador || "—"} · {fecha(g.creado)}
+                <p className="truncate text-xs text-muted-foreground" title={g.descripcion}>
+                  {g.descripcion ? `${g.descripcion} · ` : ""}
+                  {g.operador || "—"} · {fecha(g.creado)}
                 </p>
               </div>
-              <Button size="sm" variant="ghost" className="text-destructive" disabled={ocupado} onClick={() => onQuitar(g)}>
+              <Button size="sm" variant="outline" className={cn(accion, "text-destructive")} disabled={ocupado} onClick={() => onQuitar(g)}>
                 Quitar
+              </Button>
+            </li>
+          ))}
+          {ajenas.map((a, i) => (
+            <li key={`a-${a.red}-${i}`} className={cn(fila, "bg-muted/40")}>
+              <div className="min-w-0 space-y-0.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Red red={a.red} />
+                  <Badge variant="muted">Cargada a mano</Badge>
+                </div>
+                <p className="truncate text-xs text-muted-foreground" title={a.comentario ?? ""}>
+                  {a.comentario || "Sin comentario"}
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className={accion}
+                disabled={ocupado}
+                title="El panel pasa a gestionar esta regla, sin cortar el acceso."
+                onClick={() => void onAlta(servicio, a.red, a.comentario ?? "")}
+              >
+                Gestionar desde el panel
               </Button>
             </li>
           ))}
@@ -118,86 +150,69 @@ function Seccion({ servicio, titulo, tuIp, gestionadas, ajenas, ocupado, onAlta,
       )}
 
       {ajenas.length > 0 && (
-        <div className="space-y-2">
-          <p className="text-xs text-muted-foreground">
-            Estas reglas se cargaron directamente en el servidor. Desde aquí solo se pueden quitar las gestionadas por el
-            panel.
-          </p>
-          <ul className="space-y-2">
-            {ajenas.map((a, i) => (
-              <li
-                key={`${a.red}-${i}`}
-                className="flex flex-wrap items-start justify-between gap-3 rounded-md border border-dashed bg-muted/40 p-3"
-              >
-                <div className="min-w-0 space-y-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Red red={a.red} />
-                    <Badge variant="muted">Cargada a mano</Badge>
-                  </div>
-                  {a.comentario && <p className="break-words text-sm text-muted-foreground">{a.comentario}</p>}
-                </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={ocupado}
-                  title="El panel pasa a gestionar esta regla, sin cortar el acceso."
-                  onClick={() => void onAlta(servicio, a.red, a.comentario ?? "")}
-                >
-                  Gestionar desde el panel
+        <p className="text-xs text-muted-foreground">
+          Las reglas «Cargada a mano» se pusieron directamente en el servidor: el panel las muestra pero no las quita. Con
+          «Gestionar desde el panel» pasan a poder quitarse desde aquí, sin cortar el acceso.
+        </p>
+      )}
+
+      <Dialog open={abierto} onOpenChange={(a) => !a && setAbierto(false)}>
+        <DialogContent titulo={`Agregar acceso a ${nombreServicio[servicio]}`} descripcion="El firewall del servidor lo aplica en unos segundos.">
+          <form onSubmit={enviar} noValidate className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor={`acceso-${servicio}-red`}>Dirección o red</Label>
+              <div className="flex gap-2">
+                <Input
+                  id={`acceso-${servicio}-red`}
+                  className="font-mono"
+                  placeholder="192.0.2.10 o 198.51.100.0/24"
+                  autoComplete="off"
+                  spellCheck={false}
+                  autoFocus
+                  maxLength={64}
+                  value={red}
+                  onChange={(e) => setRed(e.target.value)}
+                />
+                <Button variant="outline" className="shrink-0" disabled={!tuIp} onClick={() => setRed(tuIp)}>
+                  Usar mi dirección
                 </Button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      <form onSubmit={enviar} noValidate className="space-y-3 border-t pt-4">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-2">
-            <Label htmlFor={`acceso-${servicio}-red`}>Dirección o red</Label>
-            <Input
-              id={`acceso-${servicio}-red`}
-              className="font-mono"
-              placeholder="192.0.2.10 o 198.51.100.0/24"
-              autoComplete="off"
-              spellCheck={false}
-              maxLength={64}
-              value={red}
-              onChange={(e) => setRed(e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor={`acceso-${servicio}-descripcion`}>Descripción (opcional)</Label>
-            <Input
-              id={`acceso-${servicio}-descripcion`}
-              placeholder="Oficina, casa del técnico…"
-              autoComplete="off"
-              maxLength={120}
-              value={descripcion}
-              onChange={(e) => setDescripcion(e.target.value)}
-            />
-          </div>
-        </div>
-        <div className="flex flex-wrap justify-end gap-2">
-          <Button size="sm" variant="outline" disabled={!tuIp} onClick={() => setRed(tuIp)}>
-            Usar mi dirección
-          </Button>
-          <Button size="sm" type="submit" disabled={ocupado}>
-            Dar acceso
-          </Button>
-        </div>
-      </form>
-
-      {!yaAbierto && (
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
-          <p className="min-w-0 flex-1 text-xs text-muted-foreground">
-            Sin limitar por dirección: cualquiera en internet podrá llegar a {nombreServicio[servicio]}.
-          </p>
-          <Button size="sm" variant="outline" className="text-destructive" disabled={ocupado} onClick={abrirATodos}>
-            Abrir a cualquier dirección
-          </Button>
-        </div>
-      )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Una dirección suelta o una red completa, IPv4 o IPv6.{tuIp ? ` Estás conectado desde ${tuIp}.` : ""}
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor={`acceso-${servicio}-descripcion`}>Descripción (opcional)</Label>
+              <Input
+                id={`acceso-${servicio}-descripcion`}
+                placeholder="Oficina, casa del técnico…"
+                autoComplete="off"
+                maxLength={120}
+                value={descripcion}
+                onChange={(e) => setDescripcion(e.target.value)}
+              />
+            </div>
+            {!yaAbierto && (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-destructive/40 p-3">
+                <p className="min-w-0 flex-1 text-xs text-muted-foreground">
+                  Sin limitar por dirección: cualquiera en internet podrá llegar a {nombreServicio[servicio]}.
+                </p>
+                <Button size="sm" variant="outline" className="text-destructive" disabled={ocupado} onClick={abrirATodos}>
+                  Abrir a cualquier dirección
+                </Button>
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setAbierto(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={ocupado}>
+                {ocupado ? "Guardando…" : "Dar acceso"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }
