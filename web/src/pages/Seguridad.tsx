@@ -203,7 +203,7 @@ function Operadores() {
                   <div className="text-xs">{o.sesiones} sesión(es) abierta(s)</div>
                 </Td>
                 <Td>
-                  <div className="flex flex-wrap justify-end gap-1">
+                  <div className="flex flex-nowrap items-center justify-end gap-1 whitespace-nowrap">
                     {yo && (
                       <Button size="sm" onClick={() => setMiCuenta(true)}>
                         <UserCog /> Mi cuenta
@@ -230,7 +230,7 @@ function Operadores() {
                       </Button>
                     )}
                     {!yo && (
-                      <Button size="sm" variant="ghost" className="text-destructive" onClick={() => borrar(o)}>
+                      <Button size="sm" variant="outline" className="text-destructive" onClick={() => borrar(o)}>
                         Eliminar
                       </Button>
                     )}

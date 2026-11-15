@@ -158,7 +158,7 @@ export default function Usuarios() {
             {lista?.map((u) => (
               <tr key={u.id}>
                 <Td>
-                  <div className="font-medium">{u.usuario}</div>
+                  <div className="whitespace-nowrap font-medium">{u.usuario}</div>
                   {u.nombre_completo && <div className="text-xs text-muted-foreground">{u.nombre_completo}</div>}
                 </Td>
                 <Td className="font-mono text-xs">{u.grupo}</Td>
@@ -167,7 +167,7 @@ export default function Usuarios() {
                 </Td>
                 <Td className="whitespace-nowrap text-muted-foreground">{fecha(u.clave_cambiada)}</Td>
                 <Td>
-                  <div className="flex flex-wrap justify-end gap-1">
+                  <div className="flex flex-nowrap items-center justify-end gap-1 whitespace-nowrap">
                     <Button
                       size="sm"
                       variant="outline"
@@ -181,7 +181,7 @@ export default function Usuarios() {
                     <Button size="sm" variant="outline" onClick={() => alternar(u)}>
                       {u.activo ? "Suspender" : "Activar"}
                     </Button>
-                    <Button size="sm" variant="ghost" className="text-destructive" onClick={() => borrar(u)}>
+                    <Button size="sm" variant="outline" className="text-destructive" onClick={() => borrar(u)}>
                       Eliminar
                     </Button>
                   </div>

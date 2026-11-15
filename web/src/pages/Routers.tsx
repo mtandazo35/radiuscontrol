@@ -218,10 +218,10 @@ export default function Routers() {
             {lista?.map((r) => (
               <tr key={r.id}>
                 <Td>
-                  <div className="font-medium">{r.nombre}</div>
+                  <div className="whitespace-nowrap font-medium">{r.nombre}</div>
                   {r.descripcion && <div className="text-xs text-muted-foreground">{r.descripcion}</div>}
                 </Td>
-                <Td>{r.empresa || <Badge variant="warning">Sin empresa</Badge>}</Td>
+                <Td className="whitespace-nowrap">{r.empresa || <Badge variant="warning">Sin empresa</Badge>}</Td>
                 <Td className="font-mono text-xs">
                   {r.redes.map((red) => (
                     <div key={red}>{red}</div>
@@ -238,7 +238,7 @@ export default function Routers() {
                 </Td>
                 <Td className="whitespace-nowrap text-muted-foreground">{fecha(r.secreto_rotado)}</Td>
                 <Td>
-                  <div className="flex flex-wrap justify-end gap-1">
+                  <div className="flex flex-nowrap items-center justify-end gap-1 whitespace-nowrap">
                     <Button
                       size="sm"
                       variant="outline"
@@ -266,7 +266,7 @@ export default function Routers() {
                     <Button size="sm" variant="outline" onClick={() => alternar(r)}>
                       {r.activo ? "Suspender" : "Activar"}
                     </Button>
-                    <Button size="sm" variant="ghost" className="text-destructive" onClick={() => borrar(r)}>
+                    <Button size="sm" variant="outline" className="text-destructive" onClick={() => borrar(r)}>
                       Eliminar
                     </Button>
                   </div>
