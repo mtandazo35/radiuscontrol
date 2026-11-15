@@ -1,9 +1,9 @@
-import { Ban, KeyRound, Router as IconoRouter, ShieldAlert, Users } from "lucide-react";
+import { KeyRound, Router as IconoRouter, ShieldAlert, Users } from "lucide-react";
 import * as React from "react";
 import { Link } from "react-router-dom";
 import { Badge, Card, Table, Td, Th } from "@/components/ui";
 import { api } from "@/lib/api";
-import { cn, fecha } from "@/lib/utils";
+import { cn, fecha, motivoLegible } from "@/lib/utils";
 import { useFiltro } from "../filtro";
 
 interface Tramo {
@@ -39,6 +39,39 @@ interface Resumen {
     ultimo: string | null;
   }[];
   rechazados: { usuario: string; rechazados: number; ultimo: string }[];
+  activos: Cuenta[];
+  motivos: Cuenta[];
+  origenes: Cuenta[];
+  recientes: {
+    fecha: string;
+    resultado: "aceptado" | "rechazado";
+    usuario: string;
+    router: string;
+    origen: string;
+    metodo: string;
+    motivo: string;
+  }[];
+}
+
+interface Cuenta {
+  nombre: string;
+  total: number;
+  ultimo: string;
+}
+
+const periodos = [
+  { horas: 1, texto: "1 h" },
+  { horas: 12, texto: "12 h" },
+  { horas: 24, texto: "24 h" },
+];
+
+// «hace 3 min»: en un panel que se mira de reojo dice más que la hora exacta.
+function hace(iso: string, ahora: string) {
+  const s = Math.max(0, Math.round((new Date(ahora).getTime() - new Date(iso).getTime()) / 1000));
+  if (s < 60) return "hace un momento";
+  if (s < 3600) return `hace ${Math.floor(s / 60)} min`;
+  if (s < 86400) return `hace ${Math.floor(s / 3600)} h`;
+  return `hace ${Math.floor(s / 86400)} d`;
 }
 
 const miles = new Intl.NumberFormat("es-EC");
@@ -116,48 +149,105 @@ function Grafico({ datos }: { datos: Resumen }) {
   const vacio = tramos.every((t) => t.aceptados + t.rechazados === 0);
 
   const ancho = 720;
-  const alto = 180;
+  const alto = 200;
+  const util = alto - 10;
   const hueco = ancho / n;
-  const marcas = [0, 0.5, 1];
+  const grosor = Math.min(hueco * 0.7, 14);
+  const marcas = [1, 0.5, 0];
 
   return (
-    <div>
-      <div className="relative">
-        <svg viewBox={`0 0 ${ancho} ${alto}`} className="block h-48 w-full" preserveAspectRatio="none" role="img" aria-label="Autenticaciones aceptadas y rechazadas por tramo">
-          {marcas.map((m) => (
-            <line key={m} x1={0} x2={ancho} y1={alto - m * (alto - 8)} y2={alto - m * (alto - 8)} className="stroke-border" strokeWidth={1} vectorEffect="non-scaling-stroke" />
-          ))}
-          {tramos.map((t, i) => {
-            const escala = (alto - 8) / maximo;
-            const hA = t.aceptados * escala;
-            const hR = t.rechazados * escala;
-            const x = i * hueco + hueco * 0.15;
-            const w = hueco * 0.7;
-            const titulo = `${hora.format(t.inicio)}: ${t.aceptados} aceptados, ${t.rechazados} rechazados`;
-            return (
-              <g key={t.inicio}>
-                <title>{titulo}</title>
-                {/* Zona completa para que la ayuda salga también sobre un tramo vacío. */}
-                <rect x={i * hueco} y={0} width={hueco} height={alto} fill="transparent" />
-                {hA > 0 && <rect x={x} y={alto - hA} width={w} height={hA} rx={1} className="fill-success" />}
-                {hR > 0 && <rect x={x} y={alto - hA - hR} width={w} height={hR} rx={1} className="fill-destructive" />}
-              </g>
-            );
-          })}
-        </svg>
-        <span className="absolute right-0 top-0 font-mono text-[11px] text-muted-foreground">{maximo}</span>
-        {vacio && (
-          <p className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
-            Sin autenticaciones en las últimas {datos.horas_serie} horas.
-          </p>
-        )}
-      </div>
-      <div className="mt-1 flex justify-between font-mono text-[11px] text-muted-foreground">
-        {[0, Math.floor(n / 4), Math.floor(n / 2), Math.floor((3 * n) / 4), n - 1].map((i) => (
-          <span key={i}>{hora.format(tramos[i].inicio)}</span>
+    <div className="flex gap-2">
+      {/* Eje: fuera del dibujo para que ninguna barra tape las cifras. */}
+      <div className="flex h-52 flex-col justify-between pt-[10px] text-right font-mono text-[11px] leading-none text-muted-foreground">
+        {marcas.map((m) => (
+          <span key={m}>{Number.isInteger(maximo * m) ? maximo * m : ""}</span>
         ))}
       </div>
+      <div className="min-w-0 flex-1">
+        <div className="relative">
+          <svg viewBox={`0 0 ${ancho} ${alto}`} className="block h-52 w-full" preserveAspectRatio="none" role="img" aria-label="Autenticaciones aceptadas y rechazadas por tramo">
+            {marcas.map((m) => (
+              <line key={m} x1={0} x2={ancho} y1={alto - m * util} y2={alto - m * util} className="stroke-border" strokeWidth={1} strokeDasharray={m === 0 ? undefined : "3 4"} vectorEffect="non-scaling-stroke" />
+            ))}
+            {tramos.map((t, i) => {
+              const escala = util / maximo;
+              const hA = t.aceptados * escala;
+              const hR = t.rechazados * escala;
+              const x = i * hueco + (hueco - grosor) / 2;
+              const titulo = `${hora.format(t.inicio)}: ${t.aceptados} aceptados, ${t.rechazados} rechazados`;
+              return (
+                <g key={t.inicio} className="group">
+                  <title>{titulo}</title>
+                  {/* Zona completa: resalta la columna y da la ayuda también sobre un tramo vacío. */}
+                  <rect x={i * hueco} y={0} width={hueco} height={alto} className="fill-transparent group-hover:fill-muted" />
+                  {hA > 0 && <rect x={x} y={alto - hA} width={grosor} height={hA} className="fill-success" />}
+                  {hR > 0 && <rect x={x} y={alto - hA - hR} width={grosor} height={hR} className="fill-destructive" />}
+                </g>
+              );
+            })}
+          </svg>
+          {vacio && (
+            <p className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
+              Sin autenticaciones en {datos.horas_serie === 1 ? "la última hora" : `las últimas ${datos.horas_serie} horas`}.
+            </p>
+          )}
+        </div>
+        <div className="mt-1.5 flex justify-between font-mono text-[11px] text-muted-foreground">
+          {[0, Math.floor(n / 4), Math.floor(n / 2), Math.floor((3 * n) / 4), n - 1].map((i) => (
+            <span key={i}>{hora.format(tramos[i].inicio)}</span>
+          ))}
+        </div>
+      </div>
     </div>
+  );
+}
+
+// Lista ordenada con una barra de fondo proporcional a la primera entrada.
+function Lista({
+  titulo,
+  ayuda,
+  filas,
+  vacio,
+  tono,
+  mono = true,
+}: {
+  titulo: string;
+  ayuda: string;
+  filas: { nombre: string; total: number; detalle?: string }[];
+  vacio: string;
+  tono: "ok" | "fallo";
+  mono?: boolean;
+}) {
+  const maximo = Math.max(1, ...filas.map((f) => f.total));
+  return (
+    <Card className="p-4 shadow-none">
+      <h2 className="text-sm font-semibold">{titulo}</h2>
+      <p className="mb-3 text-[11px] text-muted-foreground">{ayuda}</p>
+      {filas.length === 0 ? (
+        <p className="text-sm text-muted-foreground">{vacio}</p>
+      ) : (
+        <ul className="space-y-1.5">
+          {filas.map((f) => (
+            <li key={f.nombre} className="relative overflow-hidden rounded">
+              <span
+                aria-hidden="true"
+                className={cn("absolute inset-y-0 left-0 rounded", tono === "ok" ? "bg-success/15" : "bg-destructive/15")}
+                style={{ width: `${Math.max(4, (f.total / maximo) * 100)}%` }}
+              />
+              <div className="relative flex items-center justify-between gap-3 px-2 py-1.5">
+                <div className="min-w-0">
+                  <p className={cn("truncate text-sm", mono && "font-mono")} title={f.nombre}>
+                    {f.nombre}
+                  </p>
+                  {f.detalle && <p className="text-[11px] text-muted-foreground">{f.detalle}</p>}
+                </div>
+                <span className={cn("font-mono text-sm font-semibold", tono === "ok" ? "text-success" : "text-destructive")}>{miles.format(f.total)}</span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
   );
 }
 
@@ -178,12 +268,13 @@ export default function Inicio() {
   const { routerId } = useFiltro();
   const [datos, setDatos] = React.useState<Resumen | null>(null);
   const [fallo, setFallo] = React.useState(false);
+  const [horas, setHoras] = React.useState(12);
 
   React.useEffect(() => {
     let vivo = true;
     const cargar = async () => {
       try {
-        const r = await api<Resumen>("GET", `/resumen${routerId !== null ? `?router=${routerId}` : ""}`, undefined, { auto: true });
+        const r = await api<Resumen>("GET", `/resumen?horas=${horas}${routerId !== null ? `&router=${routerId}` : ""}`, undefined, { auto: true });
         if (vivo) {
           setDatos(r);
           setFallo(false);
@@ -198,13 +289,17 @@ export default function Inicio() {
       vivo = false;
       window.clearInterval(t);
     };
-  }, [routerId]);
+  }, [routerId, horas]);
 
   if (!datos) {
     return <p className="text-sm text-muted-foreground">{fallo ? "No se pudo cargar el resumen. Se reintenta solo en unos segundos." : "Cargando…"}</p>;
   }
 
   const total24 = datos.aceptados_24h + datos.rechazados_24h;
+  // Varios textos de FreeRADIUS significan lo mismo para quien lee: se suman.
+  const porMotivo = new Map<string, number>();
+  for (const m of datos.motivos) porMotivo.set(motivoLegible(m.nombre), (porMotivo.get(motivoLegible(m.nombre)) ?? 0) + m.total);
+  const motivos = [...porMotivo].map(([nombre, total]) => ({ nombre, total })).sort((a, b) => b.total - a.total);
   const exito = total24 > 0 ? `${((datos.aceptados_24h / total24) * 100).toFixed(1)} %` : "—";
 
   return (
@@ -269,39 +364,99 @@ export default function Inicio() {
 
       <div className="grid gap-4 xl:grid-cols-3">
         <Card className="p-4 shadow-none xl:col-span-2">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-base font-semibold">
-              Salud de autenticación{" "}
-              <span className="text-xs font-normal text-muted-foreground">
-                últimas {datos.horas_serie} horas, cada {datos.minutos_tramo} minutos
-              </span>
-            </h2>
-            <Leyenda />
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+            <div>
+              <h2 className="text-base font-semibold">Salud de autenticación</h2>
+              <p className="text-[11px] text-muted-foreground">
+                Una barra cada {datos.minutos_tramo === 1 ? "minuto" : `${datos.minutos_tramo} minutos`}. Un pico rojo es alguien o algo reintentando.
+              </p>
+            </div>
+            <div className="flex items-center gap-4">
+              <Leyenda />
+              <div className="flex rounded-md border p-0.5" role="group" aria-label="Periodo del gráfico">
+                {periodos.map((p) => (
+                  <button
+                    key={p.horas}
+                    type="button"
+                    onClick={() => setHoras(p.horas)}
+                    aria-pressed={horas === p.horas}
+                    className={cn(
+                      "rounded px-2.5 py-1 font-mono text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      horas === p.horas ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {p.texto}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
           <Grafico datos={datos} />
         </Card>
 
-        <Card className="p-4 shadow-none">
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <h2 className="text-base font-semibold">Más rechazados (24 h)</h2>
-            <Ban className="size-4 text-muted-foreground" aria-hidden="true" />
+        <Card className="flex flex-col shadow-none">
+          <div className="flex items-center justify-between gap-2 px-4 pb-2 pt-4">
+            <h2 className="text-base font-semibold">Últimos intentos</h2>
+            <Link to="/autenticaciones" className="text-sm font-medium text-primary hover:underline">
+              Ver todos
+            </Link>
           </div>
-          {datos.rechazados.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nadie fue rechazado en las últimas 24 horas.</p>
+          {datos.recientes.length === 0 ? (
+            <p className="px-4 pb-4 text-sm text-muted-foreground">Todavía no hay ningún intento registrado.</p>
           ) : (
             <ul className="divide-y">
-              {datos.rechazados.map((x) => (
-                <li key={x.usuario} className="flex items-center justify-between gap-3 py-2 first:pt-0 last:pb-0">
-                  <div className="min-w-0">
-                    <p className="truncate font-mono text-sm">{x.usuario || "(sin usuario)"}</p>
-                    <p className="text-[11px] text-muted-foreground">Último: {fecha(x.ultimo)}</p>
+              {datos.recientes.map((x, i) => (
+                <li key={`${x.fecha}-${i}`} className="flex items-center gap-3 px-4 py-2">
+                  <span className={cn("size-2 shrink-0 rounded-full", x.resultado === "aceptado" ? "bg-success" : "bg-destructive")} aria-hidden="true" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm">
+                      <span className="font-mono font-medium">{x.usuario || "(sin usuario)"}</span>
+                      <span className="text-muted-foreground"> en {x.router || "router desconocido"}</span>
+                    </p>
+                    <p className={cn("truncate text-[11px]", x.resultado === "aceptado" ? "text-success" : "text-destructive")}>
+                      {x.resultado === "aceptado" ? `Aceptado por ${x.metodo || "RADIUS"}` : motivoLegible(x.motivo)}
+                    </p>
                   </div>
-                  <span className="font-mono text-sm font-semibold text-destructive">{miles.format(x.rechazados)}</span>
+                  <span className="shrink-0 font-mono text-[11px] text-muted-foreground" title={fecha(x.fecha)}>
+                    {hace(x.fecha, datos.ahora)}
+                  </span>
                 </li>
               ))}
             </ul>
           )}
         </Card>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <Lista
+          titulo="Quién entra más"
+          ayuda="Logins aceptados por usuario, 24 h"
+          tono="ok"
+          vacio="Nadie entró en las últimas 24 horas."
+          filas={datos.activos.map((x) => ({ nombre: x.nombre || "(sin usuario)", total: x.total, detalle: `Último: ${hace(x.ultimo, datos.ahora)}` }))}
+        />
+        <Lista
+          titulo="A quién se rechaza más"
+          ayuda="Rechazos por usuario, 24 h"
+          tono="fallo"
+          vacio="Nadie fue rechazado en las últimas 24 horas."
+          filas={datos.rechazados.map((x) => ({ nombre: x.usuario || "(sin usuario)", total: x.rechazados, detalle: `Último: ${hace(x.ultimo, datos.ahora)}` }))}
+        />
+        <Lista
+          titulo="Desde dónde se rechaza"
+          ayuda="Rechazos por dirección de quien intenta, 24 h"
+          tono="fallo"
+          vacio="Sin rechazos en las últimas 24 horas."
+          filas={datos.origenes.map((x) => ({ nombre: x.nombre || "Sin dirección de origen", total: x.total, detalle: `Último: ${hace(x.ultimo, datos.ahora)}` }))}
+        />
+        <Lista
+          titulo="Por qué se rechaza"
+          ayuda="Motivo que da FreeRADIUS, 24 h"
+          tono="fallo"
+          mono={false}
+          vacio="Sin rechazos en las últimas 24 horas."
+          filas={motivos}
+        />
       </div>
 
       <Card className="shadow-none">

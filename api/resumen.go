@@ -32,16 +32,56 @@ type resumenRechazado struct {
 	Ultimo     time.Time `json:"ultimo"`
 }
 
-const (
-	resumenHorasSerie = 12
-	resumenMinTramo   = 10
-)
+type resumenCuenta struct {
+	Nombre string    `json:"nombre"`
+	Total  int       `json:"total"`
+	Ultimo time.Time `json:"ultimo"`
+}
+
+type resumenReciente struct {
+	Fecha     time.Time `json:"fecha"`
+	Resultado string    `json:"resultado"`
+	Usuario   string    `json:"usuario"`
+	Router    string    `json:"router"`
+	Origen    string    `json:"origen"`
+	Metodo    string    `json:"metodo"`
+	Motivo    string    `json:"motivo"`
+}
+
+// Periodos del gráfico: horas a mostrar y minutos de cada barra.
+var resumenPeriodos = map[int]int{1: 1, 12: 10, 24: 20}
+
+// Las seis entradas con más apariciones en las últimas 24 horas. «columna» y
+// «resultado» los pone el código, nunca quien llama a la API.
+func (a *App) resumenCuentas(r *http.Request, columna, resultado string, router int) ([]resumenCuenta, error) {
+	lista := []resumenCuenta{}
+	filas, err := a.db.Query(r.Context(), `SELECT `+columna+`, count(*), max(fecha) FROM autenticaciones
+		WHERE resultado = $2 AND fecha > now() - interval '24 hours' AND ($1 = 0 OR router_id = $1)
+		GROUP BY 1 ORDER BY count(*) DESC, max(fecha) DESC LIMIT 6`, router, resultado)
+	if err != nil {
+		return nil, err
+	}
+	defer filas.Close()
+	for filas.Next() {
+		var x resumenCuenta
+		if err := filas.Scan(&x.Nombre, &x.Total, &x.Ultimo); err != nil {
+			return nil, err
+		}
+		lista = append(lista, x)
+	}
+	return lista, filas.Err()
+}
 
 func (a *App) verResumen(w http.ResponseWriter, r *http.Request, op *Operador) error {
 	// 0 = todos los routers.
 	router, _ := strconv.Atoi(r.URL.Query().Get("router"))
 	if router < 0 {
 		router = 0
+	}
+	horas, _ := strconv.Atoi(r.URL.Query().Get("horas"))
+	minTramo, ok := resumenPeriodos[horas]
+	if !ok {
+		horas, minTramo = 12, resumenPeriodos[12]
 	}
 	ctx := r.Context()
 
@@ -82,7 +122,7 @@ func (a *App) verResumen(w http.ResponseWriter, r *http.Request, op *Operador) e
 		count(*) FILTER (WHERE resultado = 'rechazado')
 		FROM autenticaciones
 		WHERE fecha > now() - make_interval(hours => $3::int) AND ($1 = 0 OR router_id = $1)
-		GROUP BY tramo ORDER BY tramo`, router, resumenMinTramo*60, resumenHorasSerie)
+		GROUP BY tramo ORDER BY tramo`, router, minTramo*60, horas)
 	if err != nil {
 		return err
 	}
@@ -150,6 +190,38 @@ func (a *App) verResumen(w http.ResponseWriter, r *http.Request, op *Operador) e
 		return err
 	}
 
+	activos, err := a.resumenCuentas(r, "usuario", "aceptado", router)
+	if err != nil {
+		return err
+	}
+	motivos, err := a.resumenCuentas(r, "motivo", "rechazado", router)
+	if err != nil {
+		return err
+	}
+	origenes, err := a.resumenCuentas(r, "origen", "rechazado", router)
+	if err != nil {
+		return err
+	}
+
+	recientes := []resumenReciente{}
+	filas, err = a.db.Query(ctx, `SELECT fecha, resultado, usuario, router_nombre, origen, metodo, motivo
+		FROM autenticaciones WHERE $1 = 0 OR router_id = $1 ORDER BY id DESC LIMIT 8`, router)
+	if err != nil {
+		return err
+	}
+	for filas.Next() {
+		var x resumenReciente
+		if err := filas.Scan(&x.Fecha, &x.Resultado, &x.Usuario, &x.Router, &x.Origen, &x.Metodo, &x.Motivo); err != nil {
+			filas.Close()
+			return err
+		}
+		recientes = append(recientes, x)
+	}
+	filas.Close()
+	if err := filas.Err(); err != nil {
+		return err
+	}
+
 	escribirJSON(w, http.StatusOK, map[string]any{
 		"ahora":                 time.Now(),
 		"aceptados_24h":         acept24,
@@ -162,8 +234,12 @@ func (a *App) verResumen(w http.ResponseWriter, r *http.Request, op *Operador) e
 		"usuarios_total":        usuariosTotal,
 		"usuarios_activos":      usuariosActivos,
 		"bloqueos_ip":           bloqueos,
-		"minutos_tramo":         resumenMinTramo,
-		"horas_serie":           resumenHorasSerie,
+		"minutos_tramo":         minTramo,
+		"horas_serie":           horas,
+		"activos":               activos,
+		"motivos":               motivos,
+		"origenes":              origenes,
+		"recientes":             recientes,
 		"serie":                 serie,
 		"routers":               routers,
 		"rechazados":            rechazados,
