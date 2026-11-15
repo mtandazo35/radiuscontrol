@@ -2,6 +2,9 @@ package main
 
 import (
 	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"net/http"
 	"slices"
 	"strings"
 	"testing"
@@ -410,5 +413,316 @@ func TestRenderizarEscapaElSecreto(t *testing.T) {
 	}
 	if got := c.enmascarar(`error cerca de a'b\c${d}`); strings.Contains(got, "${d}") {
 		t.Fatalf("el secreto no se enmascaró: %s", got)
+	}
+}
+
+// codigoDe devuelve el código HTTP con el que se respondería ese error, o cero.
+func codigoDe(err error) int {
+	var e *errHTTP
+	if errors.As(err, &e) {
+		return e.codigo
+	}
+	return 0
+}
+
+func TestNormalizarRedAcceso(t *testing.T) {
+	// Cada pareja es lo que escribe el operador y lo que se guarda.
+	validas := [][2]string{
+		{" 192.0.2.7 ", "192.0.2.7/32"},
+		{"192.0.2.9/24", "192.0.2.0/24"},
+		{"198.51.100.8/29", "198.51.100.8/29"},
+		{"2001:db8::1", "2001:db8::1/128"},
+		{"2001:DB8:0:0::5/64", "2001:db8::/64"},
+		{"cualquiera", "cualquiera"},
+		{" Cualquiera ", "cualquiera"},
+	}
+	for _, c := range validas {
+		got, err := normalizarRedAcceso(c[0])
+		if err != nil || got != c[1] {
+			t.Errorf("%q: %q (%v), se esperaba %q", c[0], got, err, c[1])
+		}
+	}
+	// Abrir a todos se pide con la palabra, no con un prefijo /0.
+	for _, todo := range []string{"0.0.0.0/0", "::/0", " 0.0.0.0/0 ", "192.0.2.1/0"} {
+		_, err := normalizarRedAcceso(todo)
+		if codigoDe(err) != http.StatusBadRequest || !strings.Contains(err.Error(), "cualquiera") {
+			t.Errorf("%q debía rechazarse indicando que se use «cualquiera»: %v", todo, err)
+		}
+	}
+	basura := []string{"", "   ", "router-a", "any", "todas", "192.0.2.0/33", "192.0.2.256", "192.0.2.1/",
+		"::ffff:192.0.2.1", "fe80::1%eth0", "192.0.2.1, 192.0.2.2", "192.0.2.1 198.51.100.1",
+		"192.0.2.1\n198.51.100.1", "cualquiera/24", "2001:db8::/129"}
+	for _, mala := range basura {
+		if got, err := normalizarRedAcceso(mala); codigoDe(err) != http.StatusBadRequest {
+			t.Errorf("%q debía rechazarse con un 400: %q (%v)", mala, got, err)
+		}
+	}
+}
+
+func TestTextoAccesos(t *testing.T) {
+	got := string(textoAccesos([]reglaAcceso{
+		{servicioSSH, "cualquiera"},
+		{servicioPanel, "2001:db8::/64"},
+		{servicioPanel, "192.0.2.0/24"},
+		{servicioSSH, "203.0.113.7/32"},
+		// Nada que no sea canónico llega al archivo.
+		{servicioPanel, "0.0.0.0/0"},
+		{servicioPanel, "192.0.2.7"},
+		{servicioPanel, "192.0.2.1/32 ssh cualquiera"},
+		{"otro", "192.0.2.0/24"},
+	}))
+	want := "# Generado por RadiusControl. Accesos al panel y al SSH gestionados desde el panel.\n" +
+		"panel 192.0.2.0/24\npanel 2001:db8::/64\nssh 203.0.113.7/32\nssh cualquiera\n# fin\n"
+	if got != want {
+		t.Fatalf("lista de accesos inesperada:\n%s", got)
+	}
+	if vacia := string(textoAccesos(nil)); !strings.HasSuffix(vacia, "# fin\n") || strings.Count(vacia, "\n") != 2 {
+		t.Fatalf("la lista vacía debe llevar solo la cabecera y el final:\n%s", vacia)
+	}
+}
+
+func TestSalvaguardaPanel(t *testing.T) {
+	casos := []struct {
+		nombre         string
+		antes, despues []reglaAcceso
+		ip             string
+		bloquea        bool
+	}{
+		{"pierde la única red que lo cubre",
+			[]reglaAcceso{{servicioPanel, "192.0.2.0/24"}, {servicioPanel, "203.0.113.0/24"}},
+			[]reglaAcceso{{servicioPanel, "203.0.113.0/24"}}, "192.0.2.200", true},
+		{"queda cubierto por otra red más pequeña",
+			[]reglaAcceso{{servicioPanel, "192.0.2.0/24"}, {servicioPanel, "192.0.2.128/25"}},
+			[]reglaAcceso{{servicioPanel, "192.0.2.128/25"}}, "192.0.2.200", false},
+		{"queda cubierto por una dirección suelta",
+			[]reglaAcceso{{servicioPanel, "192.0.2.0/24"}, {servicioPanel, "192.0.2.200/32"}},
+			[]reglaAcceso{{servicioPanel, "192.0.2.200/32"}}, "192.0.2.200", false},
+		{"queda cubierto por «cualquiera»",
+			[]reglaAcceso{{servicioPanel, "192.0.2.0/24"}, {servicioPanel, "cualquiera"}},
+			[]reglaAcceso{{servicioPanel, "cualquiera"}}, "192.0.2.200", false},
+		{"pierde «cualquiera» y ninguna red lo cubre",
+			[]reglaAcceso{{servicioPanel, "cualquiera"}, {servicioPanel, "203.0.113.0/24"}},
+			[]reglaAcceso{{servicioPanel, "203.0.113.0/24"}}, "192.0.2.200", true},
+		{"ya no tenía acceso antes del cambio",
+			[]reglaAcceso{{servicioPanel, "203.0.113.0/24"}, {servicioPanel, "198.51.100.0/24"}},
+			[]reglaAcceso{{servicioPanel, "198.51.100.0/24"}}, "192.0.2.200", false},
+		{"una regla de SSH no da acceso al panel",
+			[]reglaAcceso{{servicioPanel, "192.0.2.0/24"}, {servicioSSH, "cualquiera"}},
+			[]reglaAcceso{{servicioSSH, "cualquiera"}}, "192.0.2.200", true},
+		{"IPv6: pierde su red",
+			[]reglaAcceso{{servicioPanel, "2001:db8::/32"}, {servicioPanel, "192.0.2.0/24"}},
+			[]reglaAcceso{{servicioPanel, "192.0.2.0/24"}}, "2001:db8::9", true},
+		{"IPv6: queda cubierto por otra red",
+			[]reglaAcceso{{servicioPanel, "2001:db8::/32"}, {servicioPanel, "2001:db8::/64"}},
+			[]reglaAcceso{{servicioPanel, "2001:db8::/64"}}, "2001:db8::9", false},
+		{"IPv6: queda cubierto por «cualquiera»",
+			[]reglaAcceso{{servicioPanel, "2001:db8::/32"}, {servicioPanel, "cualquiera"}},
+			[]reglaAcceso{{servicioPanel, "cualquiera"}}, "2001:db8::9", false},
+		{"una dirección IPv4 escrita como IPv6 cuenta como IPv4",
+			[]reglaAcceso{{servicioPanel, "192.0.2.0/24"}}, nil, "::ffff:192.0.2.200", true},
+		{"una dirección con espacios alrededor se interpreta igual",
+			[]reglaAcceso{{servicioPanel, "192.0.2.0/24"}}, nil, " 192.0.2.200 ", true},
+		{"una dirección que no se entiende no bloquea",
+			[]reglaAcceso{{servicioPanel, "cualquiera"}}, nil, "desconocida", false},
+		{"sin dirección no bloquea",
+			[]reglaAcceso{{servicioPanel, "cualquiera"}}, nil, "", false},
+	}
+	for _, c := range casos {
+		err := salvaguardaPanel(c.antes, c.despues, c.ip)
+		if c.bloquea != (codigoDe(err) == http.StatusConflict) {
+			t.Errorf("%s: bloquea = %v, se esperaba %v (%v)", c.nombre, err != nil, c.bloquea, err)
+		}
+	}
+	err := salvaguardaPanel([]reglaAcceso{{servicioPanel, "192.0.2.0/24"}}, nil, "192.0.2.200")
+	if err == nil || !strings.Contains(err.Error(), "(192.0.2.200)") {
+		t.Errorf("el mensaje debe decir la dirección que se quedaría fuera: %v", err)
+	}
+}
+
+func TestSalvaguardaSSH(t *testing.T) {
+	ssh := reglaAcceso{servicioSSH, "203.0.113.0/24"}
+	casos := []struct {
+		nombre  string
+		quitada reglaAcceso
+		despues []reglaAcceso
+		bloquea bool
+	}{
+		{"no queda ninguna regla", ssh, nil, true},
+		{"solo quedan reglas del panel", ssh, []reglaAcceso{{servicioPanel, "cualquiera"}}, true},
+		{"queda otra red de SSH", ssh, []reglaAcceso{{servicioSSH, "198.51.100.7/32"}}, false},
+		{"queda SSH abierto a cualquiera", ssh, []reglaAcceso{{servicioSSH, "cualquiera"}}, false},
+		{"queda una red IPv6 de SSH", ssh, []reglaAcceso{{servicioSSH, "2001:db8::/64"}}, false},
+		{"quitar un acceso del panel no depende del SSH", reglaAcceso{servicioPanel, "192.0.2.0/24"}, nil, false},
+	}
+	for _, c := range casos {
+		err := salvaguardaSSH(c.quitada, c.despues)
+		if c.bloquea != (codigoDe(err) == http.StatusConflict) {
+			t.Errorf("%s: bloquea = %v, se esperaba %v (%v)", c.nombre, err != nil, c.bloquea, err)
+		}
+	}
+}
+
+func TestComprobarBaja(t *testing.T) {
+	ahora := time.Date(2026, 3, 4, 12, 0, 0, 0, time.UTC)
+	// informe reciente del agente con esas reglas de UFW
+	informe := func(reglas ...reglaFirewall) *informeFirewall {
+		return &informeFirewall{UFWActivo: true, Desde: ahora.Add(-30 * time.Second).Format(time.RFC3339),
+			Servidor: &estadoServidor{Estado: "sincronizado", PuertoSSH: 22, Reglas: reglas}}
+	}
+	panelA := reglaAcceso{servicioPanel, "192.0.2.0/24"}
+	panelB := reglaAcceso{servicioPanel, "198.51.100.0/24"}
+	sshA := reglaAcceso{servicioSSH, "203.0.113.0/24"}
+	const dentro, fuera = "192.0.2.200", "203.0.113.5"
+
+	// Sin datos del agente no se quita nada, aunque por lo demás fuera seguro.
+	antiguo := informe(reglaFirewall{Servicio: servicioSSH, Red: "cualquiera"})
+	antiguo.Desde = ahora.Add(-10 * time.Minute).Format(time.RFC3339)
+	ilegible := informe(reglaFirewall{Servicio: servicioSSH, Red: "cualquiera"})
+	ilegible.Desde = "ayer"
+	sinServidor := &informeFirewall{UFWActivo: true, Desde: ahora.Format(time.RFC3339)}
+	sinDatos := []struct {
+		nombre string
+		inf    *informeFirewall
+	}{
+		{"sin informe", nil},
+		{"informe sin el objeto servidor", sinServidor},
+		{"informe antiguo", antiguo},
+		{"informe con una fecha que no se lee", ilegible},
+	}
+	for _, c := range sinDatos {
+		err := comprobarBaja(c.inf, []reglaAcceso{panelA, panelB, sshA}, panelB, fuera, ahora)
+		if codigoDe(err) != http.StatusConflict || !strings.Contains(err.Error(), "agente de firewall") {
+			t.Errorf("%s: la baja debía rechazarse por falta de datos del agente: %v", c.nombre, err)
+		}
+	}
+	// El mismo cambio, con un informe reciente, sí se permite.
+	if err := comprobarBaja(informe(), []reglaAcceso{panelA, panelB, sshA}, panelB, fuera, ahora); err != nil {
+		t.Errorf("con un informe reciente la baja debía permitirse: %v", err)
+	}
+
+	casos := []struct {
+		nombre      string
+		inf         *informeFirewall
+		gestionadas []reglaAcceso
+		quitada     reglaAcceso
+		ip          string
+		bloquea     string // parte del mensaje esperado; vacío si debe permitirse
+	}{
+		{"panel: la red del operador es la única que lo cubre",
+			informe(reglaFirewall{Servicio: servicioPanel, Red: "203.0.113.0/24", Comentario: "Panel"}),
+			[]reglaAcceso{panelA}, panelA, dentro, "sin acceso al panel"},
+		{"panel: el operador entra por una regla cargada a mano",
+			informe(reglaFirewall{Servicio: servicioPanel, Red: "203.0.113.0/24", Comentario: "Panel"}),
+			[]reglaAcceso{panelA}, panelA, fuera, ""},
+		{"panel: una dirección suelta que el agente informa sin máscara también cubre",
+			informe(reglaFirewall{Servicio: servicioPanel, Red: "192.0.2.200"}),
+			[]reglaAcceso{panelA}, panelA, dentro, ""},
+		{"panel: queda otra red gestionada que lo cubre",
+			informe(), []reglaAcceso{panelA, {servicioPanel, "192.0.2.128/25"}}, panelA, dentro, ""},
+		{"panel: quitar otra red no afecta al operador",
+			informe(), []reglaAcceso{panelA, panelB}, panelB, dentro, ""},
+		{"panel: queda abierto a cualquiera por una regla manual",
+			informe(reglaFirewall{Servicio: servicioPanel, Red: "cualquiera"}),
+			[]reglaAcceso{panelA}, panelA, dentro, ""},
+		{"panel: una regla gestionada que informa el agente no cuenta como manual",
+			informe(reglaFirewall{Servicio: servicioPanel, Red: "192.0.2.0/24", Gestionada: true, Comentario: "radiuscontrol-panel"}),
+			[]reglaAcceso{panelA}, panelA, dentro, "sin acceso al panel"},
+		{"panel: una regla manual idéntica aún sin adoptar se iría con la baja",
+			informe(reglaFirewall{Servicio: servicioPanel, Red: "192.0.2.0/24", Comentario: "Oficina"}),
+			[]reglaAcceso{panelA}, panelA, dentro, "sin acceso al panel"},
+		{"panel: una regla manual idéntica que convive con la ya aplicada se queda",
+			informe(reglaFirewall{Servicio: servicioPanel, Red: "192.0.2.0/24", Gestionada: true, Comentario: "radiuscontrol-panel"},
+				reglaFirewall{Servicio: servicioPanel, Red: "192.0.2.0/24"}),
+			[]reglaAcceso{panelA}, panelA, dentro, ""},
+		{"panel IPv6: la red del operador es la única que lo cubre",
+			informe(reglaFirewall{Servicio: servicioPanel, Red: "192.0.2.0/24"}),
+			[]reglaAcceso{{servicioPanel, "2001:db8::/48"}}, reglaAcceso{servicioPanel, "2001:db8::/48"}, "2001:db8::9", "sin acceso al panel"},
+		{"panel IPv6: queda una regla manual que lo cubre",
+			informe(reglaFirewall{Servicio: servicioPanel, Red: "2001:db8::9"}),
+			[]reglaAcceso{{servicioPanel, "2001:db8::/48"}}, reglaAcceso{servicioPanel, "2001:db8::/48"}, "2001:db8::9", ""},
+		{"ssh: es la última regla de SSH",
+			informe(reglaFirewall{Servicio: servicioPanel, Red: "cualquiera"}),
+			[]reglaAcceso{sshA, panelA}, sshA, fuera, "sin ningún acceso por SSH"},
+		{"ssh: queda una regla manual",
+			informe(reglaFirewall{Servicio: servicioSSH, Red: "198.51.100.7", Comentario: "SSH gestion"}),
+			[]reglaAcceso{sshA}, sshA, fuera, ""},
+		{"ssh: queda abierto a cualquiera por una regla manual",
+			informe(reglaFirewall{Servicio: servicioSSH, Red: "cualquiera"}),
+			[]reglaAcceso{sshA}, sshA, fuera, ""},
+		{"ssh: queda otra regla gestionada",
+			informe(), []reglaAcceso{sshA, {servicioSSH, "2001:db8::/64"}}, sshA, fuera, ""},
+		{"ssh: la única otra regla es una gestionada que ya no está en la lista",
+			informe(reglaFirewall{Servicio: servicioSSH, Red: "198.51.100.0/24", Gestionada: true, Comentario: "radiuscontrol-ssh"}),
+			[]reglaAcceso{sshA}, sshA, fuera, "sin ningún acceso por SSH"},
+		{"ssh: una regla de otro servicio desconocido no cuenta",
+			informe(reglaFirewall{Servicio: "otro", Red: "cualquiera"}),
+			[]reglaAcceso{sshA}, sshA, fuera, "sin ningún acceso por SSH"},
+	}
+	for _, c := range casos {
+		err := comprobarBaja(c.inf, c.gestionadas, c.quitada, c.ip, ahora)
+		if c.bloquea == "" {
+			if err != nil {
+				t.Errorf("%s: la baja debía permitirse: %v", c.nombre, err)
+			}
+			continue
+		}
+		if codigoDe(err) != http.StatusConflict || !strings.Contains(err.Error(), c.bloquea) {
+			t.Errorf("%s: la baja debía rechazarse con «%s»: %v", c.nombre, c.bloquea, err)
+		}
+	}
+}
+
+func TestVistaAccesos(t *testing.T) {
+	// Sin datos del agente: valores por omisión y listas vacías, nunca null.
+	j, err := json.Marshal(vistaAccesos(nil, nil, "198.51.100.9"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, esperado := range []string{
+		`"puerto_ssh":22`, `"tu_ip":"198.51.100.9"`, `"gestionadas":[]`, `"ajenas":[]`,
+		`"firewall":{"desde":"","estado":"sin-datos","ufw_activo":false}`,
+	} {
+		if !strings.Contains(string(j), esperado) {
+			t.Errorf("falta %s en la respuesta sin datos del agente:\n%s", esperado, j)
+		}
+	}
+
+	lista := []AccesoServidor{
+		{ID: 1, Servicio: servicioPanel, Red: "192.0.2.0/24", Descripcion: "Oficina", Operador: "admin"},
+		{ID: 2, Servicio: servicioSSH, Red: "192.0.2.7/32", Operador: "admin"},
+		{ID: 3, Servicio: servicioSSH, Red: "cualquiera", Operador: "admin"},
+	}
+	reglas := []reglaFirewall{
+		// El agente informa de las direcciones sueltas sin máscara.
+		{Servicio: servicioSSH, Red: "192.0.2.7", Gestionada: true, Comentario: "radiuscontrol-ssh"},
+		{Servicio: servicioSSH, Red: "203.0.113.0/24", Comentario: "SSH gestion"},
+		{Servicio: servicioPanel, Red: "cualquiera"},
+		// La misma red, pero de otro servicio: no marca como aplicada la del panel.
+		{Servicio: servicioSSH, Red: "192.0.2.0/24", Gestionada: true, Comentario: "radiuscontrol-ssh"},
+	}
+	inf := &informeFirewall{UFWActivo: true, Desde: "2026-03-04T12:00:00Z",
+		Servidor: &estadoServidor{Estado: "sincronizado", PuertoSSH: 2222, Reglas: reglas}}
+	v := vistaAccesos(lista, inf, "198.51.100.9")
+	gestionadas, ok := v["gestionadas"].([]AccesoServidor)
+	if !ok || len(gestionadas) != 3 {
+		t.Fatalf("gestionadas inesperadas: %#v", v["gestionadas"])
+	}
+	if gestionadas[0].Aplicada || !gestionadas[1].Aplicada || gestionadas[2].Aplicada {
+		t.Errorf("solo debe figurar como aplicada la que el agente informa como gestionada: %+v", gestionadas)
+	}
+	if lista[1].Aplicada {
+		t.Error("vistaAccesos no debe modificar la lista que recibe")
+	}
+	if j, err = json.Marshal(v); err != nil {
+		t.Fatal(err)
+	}
+	for _, esperado := range []string{
+		`"puerto_ssh":2222`,
+		`"ajenas":[{"servicio":"ssh","red":"203.0.113.0/24","comentario":"SSH gestion"},{"servicio":"panel","red":"cualquiera","comentario":""}]`,
+		`"firewall":{"desde":"2026-03-04T12:00:00Z","estado":"sincronizado","ufw_activo":true}`,
+	} {
+		if !strings.Contains(string(j), esperado) {
+			t.Errorf("falta %s en la respuesta:\n%s", esperado, j)
+		}
 	}
 }

@@ -578,6 +578,14 @@ api PUT /api/purga "$AJUSTES_PURGA"
 comprobar "Seguridad: la cuenta de solo lectura no puede cambiar los ajustes de la purga, 403" "$(codigo_es 403; echo $?)" "$CUERPO"
 api POST /api/purga/ejecutar '{}'
 comprobar "Seguridad: la cuenta de solo lectura no puede ejecutar una purga, 403" "$(codigo_es 403; echo $?)" "$CUERPO"
+# Accesos al servidor: el alta usa una red de documentación y la baja un
+# identificador que no existe, así que si el control fallara no tocaría nada real.
+api GET /api/servidor/accesos
+comprobar "Seguridad: la cuenta de solo lectura no ve los accesos al servidor, 403" "$(codigo_es 403; echo $?)"
+api POST /api/servidor/accesos '{"servicio":"panel","red":"192.0.2.0/24","descripcion":"Prueba automática"}'
+comprobar "Seguridad: la cuenta de solo lectura no puede dar acceso al servidor, 403" "$(codigo_es 403; echo $?)" "$CUERPO"
+api DELETE /api/servidor/accesos/2147483646
+comprobar "Seguridad: la cuenta de solo lectura no puede quitar accesos al servidor, 403" "$(codigo_es 403; echo $?)" "$CUERPO"
 
 api POST /api/cuenta/clave "$(jq -n --arg n "otra-clave-larga-1" '{actual:"equivocada",nueva:$n}')"
 comprobar "Cuenta: cambiar la contraseña con la actual equivocada se rechaza, 400" "$(codigo_es 400; echo $?)"
@@ -885,6 +893,192 @@ sql "DELETE FROM purgas WHERE operador = '$ADMIN_PRUEBA'" >/dev/null
 comprobar "Purga: datos propios de la sección retirados" \
     "$([ "$(cuenta_marca "$MARCA_ANTIGUA")" = "0 0" ] && [ "$(cuenta_marca "$MARCA_RECIENTE")" = "0 0" ] && [ "$(sql "SELECT count(*) FROM purgas WHERE operador = '$ADMIN_PRUEBA'")" = 0 ]; echo $?)"
 
+# ---------------------------------------------------------------- vaciado a petición
+# NUNCA se prueba con «dias: 0»: vaciaría los registros reales del servidor.
+# Se usa el máximo (3650 días) con una fila propia de hace 4000 días.
+sql "INSERT INTO autenticaciones (fecha, resultado, usuario, ip_origen) VALUES (now() - interval '4000 days', 'aceptado', 'prueba-automatica-vaciado', '192.0.2.9')" >/dev/null
+sql "INSERT INTO autenticaciones (fecha, resultado, usuario, ip_origen) VALUES (now(), 'aceptado', 'prueba-automatica-vaciado-reciente', '192.0.2.9')" >/dev/null
+REALES_ANTES="$(sql "SELECT count(*) FROM autenticaciones WHERE usuario NOT LIKE 'prueba-automatica%'")"
+api POST /api/purga/vaciar '{"registro":"autenticaciones","dias":3650}'
+comprobar "Vaciado: borrar a petición las autenticaciones de más de 3650 días, 200" \
+    "$(codigo_es 200 && [ "$(printf '%s' "$CUERPO" | jq -r '.purga.autenticaciones')" -ge 1 ] && [ "$(printf '%s' "$CUERPO" | jq -r '.purga.motivo')" = "vaciado" ]; echo $?)" \
+    "$(printf '%s' "$CUERPO" | jq -c '.purga | {motivo, operador, autenticaciones, actividad}')"
+comprobar "Vaciado: la fila antigua ya no está y la reciente sigue" \
+    "$([ "$(sql "SELECT count(*) FROM autenticaciones WHERE usuario = 'prueba-automatica-vaciado'")" = 0 ] && [ "$(sql "SELECT count(*) FROM autenticaciones WHERE usuario = 'prueba-automatica-vaciado-reciente'")" = 1 ]; echo $?)"
+comprobar "Vaciado: no toca las autenticaciones reales dentro del periodo" \
+    "$([ "$(sql "SELECT count(*) FROM autenticaciones WHERE usuario NOT LIKE 'prueba-automatica%'")" = "$REALES_ANTES" ]; echo $?)"
+api POST /api/purga/vaciar '{"registro":"todo","dias":3650}'
+comprobar "Vaciado: un registro desconocido se rechaza, 400" "$(codigo_es 400; echo $?)" "$CUERPO"
+api POST /api/purga/vaciar '{"registro":"actividad","dias":-1}'
+comprobar "Vaciado: unos días negativos se rechazan, 400" "$(codigo_es 400; echo $?)"
+api GET "/api/auditoria?buscar=sistema.registros_vaciados&tamano=5"
+comprobar "Vaciado: queda anotado quién lo hizo en el registro de actividad" \
+    "$(printf '%s' "$CUERPO" | jq -e --arg o "$ADMIN_PRUEBA" 'any(.eventos[]; .accion == "sistema.registros_vaciados" and .operador == $o)' >/dev/null; echo $?)"
+sql "DELETE FROM autenticaciones WHERE usuario LIKE 'prueba-automatica-vaciado%'; DELETE FROM purgas WHERE operador = '$ADMIN_PRUEBA'" >/dev/null
+
+# ---------------------------------------------------------------- accesos al servidor (panel y SSH)
+# El servidor tiene las reglas reales de UFW de su dueño, y un error aquí puede
+# dejarlo sin acceso. Por eso solo se dan de alta redes de documentación, nunca
+# «cualquiera», y solo se retira lo que la propia sección ha creado. Al final
+# se comprueba que ninguna otra regla del firewall ha cambiado.
+RED_ACC_A="192.0.2.0/24"     # panel; contiene a $IP_PRUEBA
+RED_ACC_B="198.51.100.0/24"  # panel
+RED_ACC_SSH="203.0.113.0/24" # SSH
+# Dirección simulada que no está en ninguna red del panel de la prueba.
+IP_FUERA="203.0.113.200"
+REDES_ACC_SQL="'$RED_ACC_A', '$RED_ACC_B', '$RED_ACC_SSH'"
+
+reglas_propias() { ufw show added | grep -e "comment 'radiuscontrol-panel'" -e "comment 'radiuscontrol-ssh'"; }
+reglas_ajenas() { ufw show added | grep -v -e "comment 'radiuscontrol-panel'" -e "comment 'radiuscontrol-ssh'"; }
+# Reglas gestionadas que son de las redes de la prueba.
+restos_prueba() { reglas_propias | grep -F -e "from $RED_ACC_A to " -e "from $RED_ACC_B to " -e "from $RED_ACC_SSH to "; }
+regla_acceso() { # <red> <puerto> <comentario>
+    ufw show added | grep -q -x -F "ufw allow from $1 to any port $2 proto tcp comment '$3'"
+}
+esperar_regla() { # <0: debe existir | 1: no debe existir> <red> <puerto> <comentario>
+    for _ in $(seq 1 20); do
+        regla_acceso "$2" "$3" "$4"
+        [ $? -eq "$1" ] && return 0
+        sleep 1
+    done
+    return 1
+}
+# id_acceso <servicio> <red>: identificador de ese acceso en la última respuesta
+id_acceso() {
+    printf '%s' "$CUERPO" | jq -r --arg s "$1" --arg r "$2" \
+        '[.gestionadas[]? | select(.servicio == $s and .red == $r)][0].id // empty' 2>/dev/null
+}
+alta_acceso() { # <servicio> <red>
+    api POST /api/servidor/accesos "$(jq -n --arg s "$1" --arg r "$2" '{servicio:$s,red:$r,descripcion:"Prueba automática"}')"
+}
+# Último recurso para retirar lo que quede de las redes de la prueba: se borran
+# de la base y se reinicia la API, que al arrancar vuelve a escribir la lista
+# que lee el agente de firewall. No pasa por las salvaguardas del panel.
+retirar_accesos_prueba() {
+    [ "$(sql "SELECT count(*) FROM accesos_servidor WHERE red IN ($REDES_ACC_SQL)")" = 0 ] && return 0
+    sql "DELETE FROM accesos_servidor WHERE red IN ($REDES_ACC_SQL)" >/dev/null
+    docker compose restart api >/dev/null 2>&1
+    for _ in $(seq 1 40); do
+        api GET /api/estado
+        codigo_es 200 && break
+        sleep 1
+    done
+}
+
+# Si una ejecución anterior se cortó a medias, primero se retira lo que dejó.
+retirar_accesos_prueba
+for _ in $(seq 1 20); do
+    [ -z "$(restos_prueba)" ] && break
+    sleep 1
+done
+
+api GET /api/servidor/accesos
+PUERTO_SSH="$(printf '%s' "$CUERPO" | jq -r '.puerto_ssh' 2>/dev/null)"
+comprobar "Accesos al servidor: el panel ve el puerto de SSH, tu dirección y las reglas cargadas a mano del panel y del SSH, 200" \
+    "$(codigo_es 200 && printf '%s' "$CUERPO" | jq -e --arg ip "$IP_PRUEBA" '(.puerto_ssh | type == "number") and .puerto_ssh >= 1 and .puerto_ssh <= 65535 and .tu_ip == $ip and (.gestionadas | type == "array") and any(.ajenas[]; .servicio == "panel") and any(.ajenas[]; .servicio == "ssh") and (.firewall.estado | type == "string") and (.firewall.ufw_activo | type == "boolean") and (.firewall.desde | type == "string")' >/dev/null; echo $?)" \
+    "$(printf '%s' "$CUERPO" | jq -c '{puerto_ssh, tu_ip, gestionadas, ajenas, firewall}' 2>/dev/null)"
+
+# La sección solo sigue si puede asegurar que no tocará nada ajeno: el puerto
+# de SSH se conoce, no quedan restos de otra ejecución y el dueño no tiene
+# reglas propias con estas mismas redes (el agente las adoptaría y, al retirar
+# la prueba, se las llevaría).
+CHOQUE=""
+if [[ "$PUERTO_SSH" =~ ^[0-9]+$ ]]; then
+    CHOQUE="$(reglas_ajenas | grep -F -e "from $RED_ACC_A to any port 443" -e "from $RED_ACC_B to any port 443" -e "from $RED_ACC_SSH to any port $PUERTO_SSH")"
+fi
+if ! [[ "$PUERTO_SSH" =~ ^[0-9]+$ ]] || [ -n "$CHOQUE" ] || [ -n "$(restos_prueba)" ]; then
+    comprobar "Accesos al servidor: condiciones para probar sin tocar reglas ajenas" 1 \
+        "puerto de SSH: «$PUERTO_SSH»; reglas del dueño con las redes de la prueba: «$CHOQUE»; restos de otra ejecución: «$(restos_prueba)»"
+else
+    AJENAS_ANTES="$(reglas_ajenas)"
+    PROPIAS_ANTES="$(reglas_propias)"
+
+    # Alta en el panel de la red que contiene a la dirección de la prueba.
+    alta_acceso panel "$RED_ACC_A"
+    ACC_A="$(id_acceso panel "$RED_ACC_A")"
+    comprobar "Accesos al servidor: alta de una red para el panel, 201" "$(codigo_es 201 && [ -n "$ACC_A" ]; echo $?)" \
+        "$(printf '%s' "$CUERPO" | jq -c '.gestionadas' 2>/dev/null)"
+    esperar_regla 0 "$RED_ACC_A" 443 radiuscontrol-panel
+    comprobar "Accesos al servidor: en menos de 20 s UFW tiene la regla de 443/tcp con el comentario radiuscontrol-panel" "$?" "$(reglas_propias)"
+    aplicada_a() { printf '%s' "$CUERPO" | jq -e --arg r "$RED_ACC_A" 'any(.gestionadas[]; .servicio == "panel" and .red == $r and .aplicada)' >/dev/null 2>&1; }
+    for _ in $(seq 1 20); do
+        api GET /api/servidor/accesos
+        aplicada_a && break
+        sleep 1
+    done
+    comprobar "Accesos al servidor: el panel marca el acceso como aplicado" "$(aplicada_a; echo $?)" \
+        "$(printf '%s' "$CUERPO" | jq -c '{gestionadas, firewall}' 2>/dev/null)"
+
+    api DELETE "/api/servidor/accesos/$ACC_A"
+    comprobar "Accesos al servidor: no deja quitar la red desde la que está conectado el operador, 409" "$(codigo_es 409; echo $?)" "$CUERPO"
+    sleep 6
+    comprobar "Accesos al servidor: la regla que no se dejó quitar sigue en UFW" \
+        "$(regla_acceso "$RED_ACC_A" 443 radiuscontrol-panel; echo $?)"
+
+    alta_acceso panel "$RED_ACC_A"
+    comprobar "Accesos al servidor: una red repetida se rechaza, 409" "$(codigo_es 409; echo $?)" "$CUERPO"
+
+    # Otra red del panel: quitarla no deja fuera al operador.
+    alta_acceso panel "$RED_ACC_B"
+    ACC_B="$(id_acceso panel "$RED_ACC_B")"
+    comprobar "Accesos al servidor: alta de una segunda red para el panel, 201" "$(codigo_es 201 && [ -n "$ACC_B" ]; echo $?)"
+    esperar_regla 0 "$RED_ACC_B" 443 radiuscontrol-panel
+    comprobar "Accesos al servidor: la segunda red llega a UFW" "$?"
+    api DELETE "/api/servidor/accesos/$ACC_B"
+    comprobar "Accesos al servidor: quitar una red que no deja fuera al operador, 200" \
+        "$(codigo_es 200 && printf '%s' "$CUERPO" | jq -e --arg r "$RED_ACC_B" 'all(.gestionadas[]; .red != $r)' >/dev/null; echo $?)" "$CUERPO"
+    esperar_regla 1 "$RED_ACC_B" 443 radiuscontrol-panel
+    comprobar "Accesos al servidor: al quitarla, su regla desaparece de UFW" "$?" "$(reglas_propias)"
+
+    # SSH: la regla va al puerto que informa el panel.
+    alta_acceso ssh "$RED_ACC_SSH"
+    ACC_SSH="$(id_acceso ssh "$RED_ACC_SSH")"
+    comprobar "Accesos al servidor: alta de una red para el SSH, 201" "$(codigo_es 201 && [ -n "$ACC_SSH" ]; echo $?)"
+    esperar_regla 0 "$RED_ACC_SSH" "$PUERTO_SSH" radiuscontrol-ssh
+    comprobar "Accesos al servidor: UFW tiene la regla del puerto de SSH ($PUERTO_SSH/tcp) con el comentario radiuscontrol-ssh" "$?" "$(reglas_propias)"
+    api DELETE "/api/servidor/accesos/$ACC_SSH"
+    comprobar "Accesos al servidor: quitar la red del SSH mientras quedan otras reglas de SSH, 200" "$(codigo_es 200; echo $?)" "$CUERPO"
+    esperar_regla 1 "$RED_ACC_SSH" "$PUERTO_SSH" radiuscontrol-ssh
+    comprobar "Accesos al servidor: al quitarla, la regla de SSH desaparece de UFW" "$?" "$(reglas_propias)"
+
+    # Validaciones: ninguna debe crear nada.
+    api POST /api/servidor/accesos '{"servicio":"panel","red":"0.0.0.0/0"}'
+    comprobar "Accesos al servidor: 0.0.0.0/0 se rechaza, 400" "$(codigo_es 400; echo $?)" "$CUERPO"
+    api POST /api/servidor/accesos '{"servicio":"panel","red":"no-es-una-red"}'
+    comprobar "Accesos al servidor: una red que no es válida se rechaza, 400" "$(codigo_es 400; echo $?)" "$CUERPO"
+    api POST /api/servidor/accesos "$(jq -n --arg r "$RED_ACC_B" '{servicio:"ftp",red:$r}')"
+    comprobar "Accesos al servidor: un servicio desconocido se rechaza, 400" "$(codigo_es 400; echo $?)" "$CUERPO"
+    api POST /api/servidor/accesos "$(jq -n --arg r "$RED_ACC_B" '{servicio:"panel",red:$r,descripcion:("x" * 121)}')"
+    comprobar "Accesos al servidor: una descripción de más de 120 caracteres se rechaza, 400" "$(codigo_es 400; echo $?)" "$CUERPO"
+    api GET /api/servidor/accesos
+    comprobar "Accesos al servidor: las solicitudes rechazadas no crean ningún acceso" \
+        "$(printf '%s' "$CUERPO" | jq -e --arg a "$RED_ACC_A" --arg b "$RED_ACC_B" --arg s "$RED_ACC_SSH" '[.gestionadas[] | select(.red == $a or .red == $b or .red == $s) | .servicio + " " + .red] == ["panel " + $a]' >/dev/null; echo $?)" \
+        "$(printf '%s' "$CUERPO" | jq -c '.gestionadas' 2>/dev/null)"
+
+    api GET "/api/auditoria?buscar=servidor.acceso&tamano=50"
+    comprobar "Accesos al servidor: las altas y las bajas quedan en el registro de actividad" \
+        "$(printf '%s' "$CUERPO" | jq -e --arg o "$ADMIN_PRUEBA" --arg a "panel $RED_ACC_A" --arg b "panel $RED_ACC_B" 'any(.eventos[]; .accion == "servidor.acceso_añadido" and .operador == $o and .objeto == $a and (.detalle | contains("Prueba"))) and any(.eventos[]; .accion == "servidor.acceso_quitado" and .operador == $o and .objeto == $b)' >/dev/null; echo $?)" \
+        "$(printf '%s' "$CUERPO" | jq -c '[.eventos[] | select(.accion | startswith("servidor.acceso")) | {accion, objeto, detalle}][0:4]' 2>/dev/null)"
+
+    # Retirada de la red protegida: la misma baja, pedida desde una dirección
+    # simulada que no depende de esa red, sí se permite.
+    CODIGO="$(curl -sS -m 90 -o /dev/null -w '%{http_code}' -X DELETE "$API/api/servidor/accesos/$ACC_A" -H 'X-RC: 1' \
+        -H "X-Forwarded-For: $IP_FUERA" -H "Cookie: rc_sesion=$COOKIE")"
+    comprobar "Accesos al servidor: desde una dirección que no depende de esa red, sí se puede quitar, 200" "$(codigo_es 200; echo $?)"
+    # Si no se pudo por la API, se retira por la base.
+    retirar_accesos_prueba
+    for _ in $(seq 1 20); do
+        [ "$(reglas_propias)" = "$PROPIAS_ANTES" ] && break
+        sleep 1
+    done
+    comprobar "Accesos al servidor: no queda en UFW ninguna regla de panel ni de SSH creada por la prueba" \
+        "$([ "$(reglas_propias)" = "$PROPIAS_ANTES" ] && [ -z "$(restos_prueba)" ]; echo $?)" "$(reglas_propias)"
+    comprobar "Accesos al servidor: las reglas que no gestiona el panel siguen exactamente como estaban" \
+        "$([ "$(reglas_ajenas)" = "$AJENAS_ANTES" ]; echo $?)"
+    comprobar "Accesos al servidor: datos propios de la sección retirados" \
+        "$([ "$(sql "SELECT count(*) FROM accesos_servidor WHERE red IN ($REDES_ACC_SQL)")" = 0 ]; echo $?)"
+fi
+
 # ---------------------------------------------------------------- actualizaciones
 api POST /api/actualizacion/buscar '{}'
 comprobar "Actualización: pedir una búsqueda, 202" "$(codigo_es 202; echo $?)"
@@ -928,7 +1122,7 @@ aplicar
 comprobar "Limpieza: datos de prueba borrados y configuración aplicada" "$?"
 docker exec "$RADIUS" rm -f /tmp/secreto /tmp/secreto-malo /tmp/secreto-raro /tmp/secreto-b
 api DELETE /api/sesion
-docker compose exec -T postgres psql -q -U radiuscontrol -d radiuscontrol -c     "DELETE FROM autenticaciones WHERE router_nombre LIKE '$ROUTER_PRUEBA%' OR usuario LIKE '$USUARIO_PRUEBA%' OR usuario IN ('no-existe', 'DEFAULT', '$MARCA_ANTIGUA', '$MARCA_RECIENTE'); DELETE FROM purgas WHERE operador = '$ADMIN_PRUEBA'; DELETE FROM operadores WHERE usuario = '$ADMIN_PRUEBA'; DELETE FROM intentos_ip WHERE ip IN ('$IP_PRUEBA', '$IP_ATACANTE', '$IP_PUBLICA') OR ip LIKE '192.0.2.2%'; DELETE FROM auditoria WHERE ip LIKE '192.0.2.2%' OR operador IN ('operador-bloqueo-automatica', 'operador-sesiones-automatica') OR objeto IN ('operador-bloqueo-automatica', 'operador-sesiones-automatica', 'todas las demás'); DELETE FROM auditoria WHERE operador IN ('$OPERADOR_PRUEBA', '$ADMIN_PRUEBA', 'prueba-direccion-fingida', 'usuario-que-no-existe', '$MARCA_ANTIGUA', '$MARCA_RECIENTE') OR ip IN ('$IP_PRUEBA', '$IP_ATACANTE') OR objeto IN ('$IP_ATACANTE', '$IP_PRUEBA') OR objeto = '$ADMIN_PRUEBA' OR objeto IN ('$OPERADOR_PRUEBA', 'Empresa de prueba') OR objeto LIKE '$ROUTER_PRUEBA%' OR objeto LIKE '$USUARIO_PRUEBA%' OR (accion = 'accesos.cambio_masivo' AND operador = '$ADMIN_PRUEBA'); DELETE FROM empresas e WHERE e.nombre IN ('Empresa de prueba', '$EMPRESA_ACCESOS') AND NOT EXISTS (SELECT 1 FROM routers r WHERE r.empresa_id = e.id)" >/dev/null 2>&1
+docker compose exec -T postgres psql -q -U radiuscontrol -d radiuscontrol -c     "DELETE FROM accesos_servidor WHERE red IN ($REDES_ACC_SQL); DELETE FROM auditoria WHERE accion LIKE 'servidor.acceso%' AND (objeto LIKE '% $RED_ACC_A' OR objeto LIKE '% $RED_ACC_B' OR objeto LIKE '% $RED_ACC_SSH'); DELETE FROM autenticaciones WHERE router_nombre LIKE '$ROUTER_PRUEBA%' OR usuario LIKE '$USUARIO_PRUEBA%' OR usuario IN ('no-existe', 'DEFAULT', '$MARCA_ANTIGUA', '$MARCA_RECIENTE'); DELETE FROM purgas WHERE operador = '$ADMIN_PRUEBA'; DELETE FROM operadores WHERE usuario = '$ADMIN_PRUEBA'; DELETE FROM intentos_ip WHERE ip IN ('$IP_PRUEBA', '$IP_ATACANTE', '$IP_PUBLICA') OR ip LIKE '192.0.2.2%'; DELETE FROM auditoria WHERE ip LIKE '192.0.2.2%' OR operador IN ('operador-bloqueo-automatica', 'operador-sesiones-automatica') OR objeto IN ('operador-bloqueo-automatica', 'operador-sesiones-automatica', 'todas las demás'); DELETE FROM auditoria WHERE operador IN ('$OPERADOR_PRUEBA', '$ADMIN_PRUEBA', 'prueba-direccion-fingida', 'usuario-que-no-existe', '$MARCA_ANTIGUA', '$MARCA_RECIENTE') OR ip IN ('$IP_PRUEBA', '$IP_ATACANTE') OR objeto IN ('$IP_ATACANTE', '$IP_PRUEBA') OR objeto = '$ADMIN_PRUEBA' OR objeto IN ('$OPERADOR_PRUEBA', 'Empresa de prueba') OR objeto LIKE '$ROUTER_PRUEBA%' OR objeto LIKE '$USUARIO_PRUEBA%' OR (accion = 'accesos.cambio_masivo' AND operador = '$ADMIN_PRUEBA'); DELETE FROM empresas e WHERE e.nombre IN ('Empresa de prueba', '$EMPRESA_ACCESOS') AND NOT EXISTS (SELECT 1 FROM routers r WHERE r.empresa_id = e.id)" >/dev/null 2>&1
 
 anotar ""
 anotar "Evidencia: $EVIDENCIA"

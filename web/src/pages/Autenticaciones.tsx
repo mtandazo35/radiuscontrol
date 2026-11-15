@@ -1,8 +1,22 @@
 import * as React from "react";
 import { Badge, Card, Input, Paginacion, Table, Td, Th } from "@/components/ui";
+import { BotonVaciar } from "@/components/Vaciar";
 import { api, type PaginaAutenticaciones } from "@/lib/api";
 import { fecha } from "@/lib/utils";
 import { useApp } from "../contexto";
+
+// FreeRADIUS explica los rechazos en su propio idioma; los más habituales se
+// traducen a algo que se entienda sin conocerlo.
+function motivoLegible(motivo: string) {
+  if (!motivo) return "Usuario desconocido o sin permiso";
+  if (motivo.includes("No NT-Password") || motivo.includes("No Auth-Type found")) {
+    return "El usuario no existe en RadiusControl o está suspendido";
+  }
+  if (motivo.includes("MS-CHAP2-Response is incorrect") || motivo.includes("password is incorrect") || motivo.includes("does not match")) {
+    return "Contraseña incorrecta";
+  }
+  return motivo;
+}
 
 export default function Autenticaciones() {
   const { avisarError } = useApp();
@@ -44,7 +58,16 @@ export default function Autenticaciones() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Autenticaciones</h1>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h1 className="text-2xl font-semibold tracking-tight">Autenticaciones</h1>
+          <BotonVaciar
+            registro="autenticaciones"
+            onHecho={() => {
+              setPagina(1);
+              cargar(true);
+            }}
+          />
+        </div>
         <p className="text-sm text-muted-foreground">
           Cada intento de login que FreeRADIUS aceptó o rechazó, en hora de Ecuador. La primera página se actualiza sola. Los paquetes de
           orígenes no autorizados o con secreto incorrecto no aparecen aquí: FreeRADIUS los descarta sin responder.
@@ -121,7 +144,9 @@ export default function Autenticaciones() {
                   {a.resultado === "aceptado" ? (
                     <span className="font-mono text-xs">{a.grupo || "—"}</span>
                   ) : (
-                    <span className="text-muted-foreground">{a.motivo || "Usuario desconocido o sin permiso"}</span>
+                    <span className="text-muted-foreground" title={a.motivo}>
+                      {motivoLegible(a.motivo)}
+                    </span>
                   )}
                 </Td>
               </tr>

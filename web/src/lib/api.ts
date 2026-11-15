@@ -210,6 +210,40 @@ export interface Purga {
   ultimas: RegistroPurga[];
 }
 
+// Accesos al servidor: qué direcciones llegan a la web del panel (443/tcp) y
+// al SSH. «red» es un prefijo o la palabra «cualquiera».
+export type ServicioAcceso = "panel" | "ssh";
+
+export interface AccesoGestionado {
+  id: number;
+  servicio: ServicioAcceso;
+  red: string;
+  descripcion: string;
+  operador: string;
+  creado: string;
+  // El firewall ya tiene puesta la regla.
+  aplicada: boolean;
+}
+
+// Regla del firewall para esos puertos que no gestiona el panel.
+export interface AccesoAjeno {
+  servicio: ServicioAcceso;
+  red: string;
+  comentario: string;
+}
+
+export interface AccesosServidor {
+  puerto_ssh: number;
+  tu_ip: string;
+  gestionadas: AccesoGestionado[];
+  ajenas: AccesoAjeno[];
+  firewall: {
+    estado: "sincronizado" | "error" | "sin-configuracion" | "sin-datos";
+    ufw_activo: boolean;
+    desde: string;
+  } | null;
+}
+
 export interface PaginaAutenticaciones {
   autenticaciones: Autenticacion[];
   total: number;

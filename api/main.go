@@ -35,6 +35,7 @@ type App struct {
 	autoMu    sync.Mutex
 	autoTimer *time.Timer
 	purgaMu   sync.Mutex
+	accesosMu sync.Mutex
 	// Solo lo usa el bucle de limpieza: evita repetir el mismo aviso en el log.
 	avisoDiscoAjeno bool
 	senuelo         string
@@ -132,6 +133,11 @@ func main() {
 	}
 	if err := app.restaurarCompilado(ctx); err != nil {
 		log.Printf("aviso: no se pudo restaurar la configuración activa: %v", err)
+	}
+	// La lista de accesos al servidor se deja siempre escrita, aunque esté
+	// vacía: sin ella, el agente de firewall no toca ninguna regla.
+	if err := app.escribirAccesos(ctx); err != nil {
+		log.Printf("aviso: no se pudo escribir la lista de accesos al servidor: %v", err)
 	}
 
 	go app.bucleRegistro(ctx)
@@ -371,5 +377,11 @@ func (a *App) rutas() http.Handler {
 	m.HandleFunc("GET /api/purga", a.admin(a.verPurga))
 	m.HandleFunc("PUT /api/purga", a.admin(a.guardarPurga))
 	m.HandleFunc("POST /api/purga/ejecutar", a.admin(a.ejecutarPurgaManual))
+	m.HandleFunc("POST /api/purga/vaciar", a.admin(a.vaciarRegistros))
+
+	// Accesos al servidor: quién llega al panel (443/tcp) y al SSH.
+	m.HandleFunc("GET /api/servidor/accesos", a.admin(a.verAccesosServidor))
+	m.HandleFunc("POST /api/servidor/accesos", a.admin(a.crearAccesoServidor))
+	m.HandleFunc("DELETE /api/servidor/accesos/{id}", a.admin(a.quitarAccesoServidor))
 	return m
 }

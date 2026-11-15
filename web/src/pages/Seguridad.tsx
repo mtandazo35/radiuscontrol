@@ -3,6 +3,7 @@ import * as React from "react";
 import { Badge, Button, Card, Dialog, DialogContent, DialogFooter, Input, Label, Paginacion, Table, Td, Th } from "@/components/ui";
 import { api, type Bloqueos as DatosBloqueos, type OperadorDetalle, type PaginaEventos, type Sesion } from "@/lib/api";
 import { ModalMiCuenta, nombreRol } from "@/components/MiCuenta";
+import { BotonVaciar } from "@/components/Vaciar";
 import { fecha } from "@/lib/utils";
 import { useApp } from "../contexto";
 
@@ -33,6 +34,9 @@ const nombreAccion: Record<string, string> = {
   "sistema.actualizacion_revertida": "Actualización revertida",
   "sistema.purga": "Limpieza de registros",
   "sistema.purga_ajustada": "Ajustes de limpieza cambiados",
+  "sistema.registros_vaciados": "Registros vaciados a mano",
+  "servidor.acceso_añadido": "Acceso al servidor añadido",
+  "servidor.acceso_quitado": "Acceso al servidor quitado",
   "ip.bloqueada": "Dirección IP bloqueada por intentos fallidos",
   "ip.desbloqueada": "Dirección IP desbloqueada",
   "router.creado": "Router creado",
@@ -478,6 +482,7 @@ function Actividad() {
   const [buscar, setBuscar] = React.useState("");
   const [pagina, setPagina] = React.useState(1);
   const [tamano, setTamano] = React.useState(25);
+  const [recarga, setRecarga] = React.useState(0);
 
   React.useEffect(() => {
     const t = window.setTimeout(async () => {
@@ -493,23 +498,32 @@ function Actividad() {
       }
     }, 250);
     return () => window.clearTimeout(t);
-  }, [buscar, pagina, tamano, avisarError]);
+  }, [buscar, pagina, tamano, recarga, avisarError]);
 
   return (
     <Seccion
       titulo="Registro de actividad"
       descripcion="Accesos al panel, intentos fallidos y cada cambio hecho, con quién lo hizo y desde qué dirección. Nunca guarda contraseñas ni secretos."
       accion={
-        <Input
-          className="w-56"
-          placeholder="Buscar operador, acción o IP"
-          aria-label="Buscar en la actividad"
-          value={buscar}
-          onChange={(e) => {
-            setBuscar(e.target.value);
-            setPagina(1);
-          }}
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          <Input
+            className="w-56"
+            placeholder="Buscar operador, acción o IP"
+            aria-label="Buscar en la actividad"
+            value={buscar}
+            onChange={(e) => {
+              setBuscar(e.target.value);
+              setPagina(1);
+            }}
+          />
+          <BotonVaciar
+            registro="actividad"
+            onHecho={() => {
+              setPagina(1);
+              setRecarga((n) => n + 1);
+            }}
+          />
+        </div>
       }
     >
       <Table>

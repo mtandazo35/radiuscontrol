@@ -3,6 +3,7 @@ import { Button, Card, Input, Label, Table, Td, Th } from "@/components/ui";
 import { api, type AjustesPurga, type Purga, type RegistroPurga } from "@/lib/api";
 import { cn, fecha } from "@/lib/utils";
 import { useApp } from "../contexto";
+import { BotonVaciar } from "./Vaciar";
 
 // Los campos se editan como texto para que se puedan vaciar mientras se escribe.
 type Formulario = Record<keyof AjustesPurga, string>;
@@ -211,10 +212,21 @@ export function Limpieza() {
     try {
       const r = await api<{ purga: RegistroPurga }>("POST", "/purga/ejecutar", {});
       await cargar();
-      avisar({
-        titulo: "Limpieza terminada",
-        mensaje: `Se borraron ${numero(r.purga.autenticaciones)} autenticaciones y ${numero(r.purga.actividad)} eventos de actividad. Uso del disco: ${r.purga.disco_antes} % antes, ${r.purga.disco_despues} % después.`,
-      });
+      if (r.purga.autenticaciones === 0 && r.purga.actividad === 0) {
+        // Que no borre nada es lo normal cuando todo es reciente: se explica,
+        // para que no parezca que la limpieza ha fallado.
+        avisar({
+          titulo: "No había nada que limpiar",
+          mensaje: guardados
+            ? `La limpieza solo borra lo que supera el tiempo de conservación: autenticaciones de más de ${guardados.dias_autenticaciones} días y actividad de más de ${guardados.dias_actividad} días. Ahora mismo no hay ningún registro tan antiguo. Si quieres borrar más, reduce esos días en los ajustes.`
+            : "No hay ningún registro más antiguo que el tiempo de conservación configurado.",
+        });
+      } else {
+        avisar({
+          titulo: "Limpieza terminada",
+          mensaje: `Se borraron ${numero(r.purga.autenticaciones)} autenticaciones y ${numero(r.purga.actividad)} eventos de actividad. Uso del disco: ${r.purga.disco_antes} % antes, ${r.purga.disco_despues} % después.`,
+        });
+      }
     } catch (e) {
       avisarError(e);
     } finally {
@@ -298,6 +310,9 @@ export function Limpieza() {
                     · {datos.mas_antiguo.autenticaciones ? `desde ${fecha(datos.mas_antiguo.autenticaciones)}` : "sin datos"}
                   </span>
                 </dd>
+                <div className="mt-2">
+                  <BotonVaciar registro="autenticaciones" onHecho={() => void cargar()} />
+                </div>
               </div>
               <div>
                 <dt className="text-xs text-muted-foreground">Eventos de actividad</dt>
@@ -308,6 +323,9 @@ export function Limpieza() {
                     · {datos.mas_antiguo.actividad ? `desde ${fecha(datos.mas_antiguo.actividad)}` : "sin datos"}
                   </span>
                 </dd>
+                <div className="mt-2">
+                  <BotonVaciar registro="actividad" onHecho={() => void cargar()} />
+                </div>
               </div>
             </dl>
           </Apartado>

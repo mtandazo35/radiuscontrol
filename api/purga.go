@@ -225,6 +225,65 @@ func (a *App) ejecutarPurga(ctx context.Context, motivo, operador, ip string) (*
 	return p, errBorrado
 }
 
+// vaciarRegistros borra a petición expresa de un administrador, sin esperar a
+// que los registros superen el tiempo de conservación: todo, o lo anterior a
+// unos días. Es distinto de la limpieza: aquí la persona decide borrar datos
+// recientes, así que queda anotado con su nombre.
+func (a *App) vaciarRegistros(w http.ResponseWriter, r *http.Request, op *Operador) error {
+	var in struct {
+		Registro string `json:"registro"`
+		Dias     int    `json:"dias"`
+	}
+	if err := leerJSON(w, r, &in); err != nil {
+		return err
+	}
+	if in.Registro != "autenticaciones" && in.Registro != "actividad" && in.Registro != "ambos" {
+		return malo("Indica qué borrar: «autenticaciones», «actividad» o «ambos».")
+	}
+	if in.Dias < 0 || in.Dias > 3650 {
+		return malo("Los días deben estar entre 0 (borrar todo) y 3650.")
+	}
+	// Una vez empezado, se termina y se anota aunque el navegador corte.
+	ctx := context.WithoutCancel(r.Context())
+	a.purgaMu.Lock()
+	defer a.purgaMu.Unlock()
+
+	antes, err := usoDisco(a.cfg.DirRegistro)
+	if err != nil {
+		return err
+	}
+	p := &Purga{Motivo: "vaciado", Operador: op.Usuario, DiscoAntes: antes.Porcentaje, DiscoDespues: antes.Porcentaje}
+	if in.Registro != "actividad" {
+		ct, err := a.db.Exec(ctx, `DELETE FROM autenticaciones WHERE fecha < now() - make_interval(days => $1)`, in.Dias)
+		if err != nil {
+			return err
+		}
+		p.Autenticaciones = ct.RowsAffected()
+	}
+	if in.Registro != "autenticaciones" {
+		ct, err := a.db.Exec(ctx, `DELETE FROM auditoria WHERE fecha < now() - make_interval(days => $1)`, in.Dias)
+		if err != nil {
+			return err
+		}
+		p.Actividad = ct.RowsAffected()
+	}
+	if despues, err := usoDisco(a.cfg.DirRegistro); err == nil {
+		p.DiscoDespues = despues.Porcentaje
+	}
+	if err := a.db.QueryRow(ctx, `INSERT INTO purgas (motivo, operador, autenticaciones, actividad, disco_antes, disco_despues)
+		VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, fecha`,
+		p.Motivo, p.Operador, p.Autenticaciones, p.Actividad, p.DiscoAntes, p.DiscoDespues).
+		Scan(&p.ID, &p.Fecha); err != nil {
+		return err
+	}
+	// Se anota después de borrar: aunque se vacíe la actividad, queda quién lo hizo.
+	a.auditar(ctx, op.Usuario, ipCliente(r), "sistema.registros_vaciados", in.Registro, map[string]any{
+		"dias": in.Dias, "autenticaciones": p.Autenticaciones, "actividad": p.Actividad,
+	})
+	escribirJSON(w, http.StatusOK, map[string]any{"purga": p})
+	return nil
+}
+
 // revisarLimpieza decide si toca una purga programada o una de emergencia.
 func (a *App) revisarLimpieza(ctx context.Context) error {
 	aj, err := a.leerAjustesPurga(ctx)

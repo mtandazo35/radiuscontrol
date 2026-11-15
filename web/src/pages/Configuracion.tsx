@@ -1,4 +1,5 @@
 import * as React from "react";
+import { AccesoServidor } from "@/components/AccesoServidor";
 import { useActualizacion, versionCorta } from "@/components/Actualizacion";
 import { Limpieza } from "@/components/Limpieza";
 import { Badge, Button, Card } from "@/components/ui";
@@ -112,6 +113,8 @@ export default function Configuracion() {
           {p && p.estado !== "ok" && p.estado !== "en-curso" && p.mensaje && <p className="mt-3 text-sm text-destructive">{p.mensaje}</p>}
         </Card>
       )}
+
+      {operador?.rol === "administrador" && <AccesoServidor />}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Card className="p-4">
