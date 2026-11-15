@@ -242,6 +242,15 @@ func (a *App) auditar(ctx context.Context, operador, ip, accion, objeto string, 
 	}
 }
 
+// verificarLimitado comprueba una contraseña dejando correr pocas
+// verificaciones a la vez: cada una gasta 64 MiB y tiempo de procesador, y sin
+// tope una ráfaga de inicios de sesión agotaría la memoria del servidor.
+func (a *App) verificarLimitado(clave, hash string) bool {
+	a.argon <- struct{}{}
+	defer func() { <-a.argon }()
+	return verificarArgon2(clave, hash)
+}
+
 func (a *App) iniciarSesion(w http.ResponseWriter, r *http.Request) error {
 	var in struct {
 		Usuario string `json:"usuario"`
@@ -253,7 +262,11 @@ func (a *App) iniciarSesion(w http.ResponseWriter, r *http.Request) error {
 	}
 	ctx := r.Context()
 	ip := ipCliente(r)
-	incorrecto := &errHTTP{codigo: http.StatusUnauthorized, msg: "Usuario o contraseña incorrectos."}
+	// La misma respuesta para un usuario que no existe, una contraseña
+	// equivocada y una cuenta bloqueada: quien no conoce la contraseña no puede
+	// distinguir los tres casos ni averiguar qué cuentas existen.
+	incorrecto := &errHTTP{codigo: http.StatusUnauthorized,
+		msg: "Usuario o contraseña incorrectos. Si la cuenta quedó bloqueada por intentos fallidos, espera o pide a un administrador que la desbloquee."}
 
 	// Una dirección bloqueada no llega a probar ninguna contraseña.
 	queda, err := a.ipBloqueada(ctx, ip)
@@ -264,16 +277,31 @@ func (a *App) iniciarSesion(w http.ResponseWriter, r *http.Request) error {
 		return errorBloqueoIP(queda)
 	}
 
+	// El intento se anota ANTES de comprobar la contraseña, y en una sola
+	// sentencia que bloquea la fila: varias peticiones a la vez no pueden pasar
+	// todas la comprobación antes de que se cuente ninguna. Si el bloqueo
+	// anterior ya caducó, la cuenta empieza de cero.
 	var id, totpUltimo int64
 	var hash, rol, usuario string
-	var activo bool
-	var bloqueado *time.Time
+	var activo, yaBloqueada bool
 	var totpCifrado []byte
-	err = a.db.QueryRow(ctx, `SELECT id, usuario, clave_hash, rol, activo, bloqueado_hasta, totp_cifrado, totp_ultimo
-		FROM operadores WHERE lower(usuario) = lower($1)`, in.Usuario).
-		Scan(&id, &usuario, &hash, &rol, &activo, &bloqueado, &totpCifrado, &totpUltimo)
+	err = a.db.QueryRow(ctx, `
+		WITH antes AS (
+			SELECT id, COALESCE(bloqueado_hasta > now(), false) AS bloqueada
+			FROM operadores WHERE lower(usuario) = lower($1) FOR UPDATE
+		), reserva AS (
+			UPDATE operadores o SET
+				intentos_fallidos = CASE WHEN o.bloqueado_hasta IS NOT NULL THEN 1 ELSE o.intentos_fallidos + 1 END,
+				bloqueado_hasta = CASE
+					WHEN (CASE WHEN o.bloqueado_hasta IS NOT NULL THEN 1 ELSE o.intentos_fallidos + 1 END) >= $2
+					THEN now() + make_interval(mins => $3) ELSE NULL END
+			FROM antes WHERE o.id = antes.id AND NOT antes.bloqueada
+		)
+		SELECT o.id, o.usuario, o.clave_hash, o.rol, o.activo, o.totp_cifrado, o.totp_ultimo, antes.bloqueada
+		FROM operadores o JOIN antes ON antes.id = o.id`, in.Usuario, intentosTope, minutosBloque).
+		Scan(&id, &usuario, &hash, &rol, &activo, &totpCifrado, &totpUltimo, &yaBloqueada)
 	if errors.Is(err, pgx.ErrNoRows) {
-		verificarArgon2(in.Clave, a.senuelo)
+		a.verificarLimitado(in.Clave, a.senuelo)
 		a.auditar(ctx, in.Usuario, ip, "sesion.fallida", "operador", map[string]any{"motivo": "usuario desconocido"})
 		a.registrarFalloIP(ctx, ip)
 		return incorrecto
@@ -281,26 +309,21 @@ func (a *App) iniciarSesion(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	if bloqueado != nil && bloqueado.After(time.Now()) {
+	if yaBloqueada {
+		// No se comprueba la contraseña real: si se hiciera, una cuenta bloqueada
+		// serviría para probar contraseñas sin límite. Se gasta el mismo tiempo
+		// con un hash señuelo. Tampoco cuenta contra la dirección, para que el
+		// operador legítimo no acabe además con su IP bloqueada.
+		a.verificarLimitado(in.Clave, a.senuelo)
 		a.auditar(ctx, usuario, ip, "sesion.fallida", "operador", map[string]any{"motivo": "cuenta bloqueada"})
-		a.registrarFalloIP(ctx, ip)
-		return &errHTTP{codigo: http.StatusTooManyRequests,
-			msg: "Esta cuenta está bloqueada temporalmente por intentos fallidos. Inténtalo más tarde o pide a un administrador que la desbloquee."}
+		return incorrecto
 	}
-	fallo := func(motivo string) error {
-		_, err := a.db.Exec(ctx, `UPDATE operadores SET
-			intentos_fallidos = intentos_fallidos + 1,
-			bloqueado_hasta = CASE WHEN intentos_fallidos + 1 >= $2
-				THEN now() + make_interval(mins => $3) ELSE bloqueado_hasta END
-			WHERE id = $1`, id, intentosTope, minutosBloque)
+	fallo := func(motivo string) {
 		a.auditar(ctx, usuario, ip, "sesion.fallida", "operador", map[string]any{"motivo": motivo})
 		a.registrarFalloIP(ctx, ip)
-		return err
 	}
-	if !verificarArgon2(in.Clave, hash) || !activo {
-		if err := fallo("contraseña incorrecta"); err != nil {
-			return err
-		}
+	if !a.verificarLimitado(in.Clave, hash) || !activo {
+		fallo("contraseña incorrecta")
 		return incorrecto
 	}
 
@@ -309,6 +332,14 @@ func (a *App) iniciarSesion(w http.ResponseWriter, r *http.Request) error {
 	if totpCifrado != nil {
 		pideCodigo := map[string]any{"requiere_codigo": true}
 		if strings.TrimSpace(in.Codigo) == "" {
+			// La contraseña era correcta y solo falta el código: este paso no es
+			// un intento fallido, así que se devuelve el que se había anotado.
+			if _, err := a.db.Exec(ctx, `UPDATE operadores SET
+				intentos_fallidos = GREATEST(intentos_fallidos - 1, 0),
+				bloqueado_hasta = CASE WHEN intentos_fallidos - 1 < $2 THEN NULL ELSE bloqueado_hasta END
+				WHERE id = $1`, id, intentosTope); err != nil {
+				return err
+			}
 			return &errHTTP{codigo: http.StatusUnauthorized,
 				msg: "Introduce el código de tu aplicación de autenticación.", extra: pideCodigo}
 		}
@@ -318,9 +349,7 @@ func (a *App) iniciarSesion(w http.ResponseWriter, r *http.Request) error {
 		}
 		c, ok := verificarTOTP(secreto, in.Codigo, time.Now(), totpUltimo)
 		if !ok {
-			if err := fallo("código incorrecto"); err != nil {
-				return err
-			}
+			fallo("código incorrecto")
 			return &errHTTP{codigo: http.StatusUnauthorized, msg: "El código no es correcto.", extra: pideCodigo}
 		}
 		contador = c

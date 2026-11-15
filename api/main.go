@@ -39,6 +39,8 @@ type App struct {
 	// Solo lo usa el bucle de limpieza: evita repetir el mismo aviso en el log.
 	avisoDiscoAjeno bool
 	senuelo         string
+	// Tope de verificaciones de contraseña simultáneas (ver verificarLimitado).
+	argon chan struct{}
 }
 
 func env(clave, defecto string) string {
@@ -119,10 +121,14 @@ func main() {
 			ServidorRadius: env("SERVIDOR_RADIUS", "192.0.2.1"),
 		},
 		senuelo: senuelo,
+		argon:   make(chan struct{}, 4),
 	}
 
 	if err := app.migrar(ctx); err != nil {
 		log.Fatalf("migraciones: %v", err)
+	}
+	if err := app.convertirHuellas(ctx); err != nil {
+		log.Fatalf("huellas: %v", err)
 	}
 	// Con argumentos, el binario ejecuta una orden de consola y termina.
 	if len(os.Args) > 1 {

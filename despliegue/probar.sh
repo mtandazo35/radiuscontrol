@@ -793,18 +793,65 @@ for n in 1 2 3 4; do
 done
 comprobar "Bloqueo por cuenta: los cuatro intentos fallidos responden 401" "$([ "$CODIGO" = 401 ]; echo $?)"
 entrar "$CUENTA_PRUEBA" "$CUENTA_CLAVE" "" "192.0.2.220"
-comprobar "Bloqueo por cuenta: el quinto intento se bloquea aunque venga de otra dirección y con la contraseña correcta, 429" \
-    "$([ "$CODIGO" = 429 ] && [ -z "$SESION" ]; echo $?)" "$CUERPO"
+RESPUESTA_BLOQUEADA="$CODIGO $CUERPO"
+comprobar "Bloqueo por cuenta: el quinto intento no entra aunque venga de otra dirección y con la contraseña correcta" \
+    "$([ "$CODIGO" = 401 ] && [ -z "$SESION" ]; echo $?)" "$CUERPO"
+entrar "usuario-que-no-existe" "$CUENTA_CLAVE" "" "192.0.2.221"
+comprobar "Bloqueo por cuenta: la respuesta es idéntica a la de un usuario que no existe (no revela qué cuentas hay)" \
+    "$([ "$RESPUESTA_BLOQUEADA" = "$CODIGO $CUERPO" ]; echo $?)"
+for n in 1 2 3 4 5; do
+    entrar "$CUENTA_PRUEBA" "equivocada-$n" "" "192.0.2.222"
+done
 api GET /api/bloqueos
+comprobar "Bloqueo por cuenta: insistir sobre una cuenta ya bloqueada no bloquea además la dirección del operador" \
+    "$(printf '%s' "$CUERPO" | jq -e 'all(.bloqueos[]; .ip != "192.0.2.222")' >/dev/null; echo $?)"
 comprobar "Bloqueo por cuenta: el panel lista la cuenta bloqueada junto a las direcciones" \
     "$(printf '%s' "$CUERPO" | jq -e --arg u "$CUENTA_PRUEBA" 'any(.cuentas[]; .usuario == $u and .intentos == 4)' >/dev/null; echo $?)" \
     "$(printf '%s' "$CUERPO" | jq -c '{cuentas: [.cuentas[] | {usuario, intentos}], regla}')"
+
+# El bloqueo caduca: se simula adelantando su fin. La cuenta debe empezar de
+# cero, no volver a bloquearse con un solo fallo.
+sql "UPDATE operadores SET bloqueado_hasta = now() - interval '1 minute' WHERE id = $CUENTA_ID" >/dev/null
+entrar "$CUENTA_PRUEBA" "equivocada-tras-caducar" "" "192.0.2.223"
+comprobar "Bloqueo por cuenta: tras caducar el bloqueo, un fallo suelto no vuelve a bloquear y el contador empieza de cero" \
+    "$([ "$(sql "SELECT intentos_fallidos || ' ' || (bloqueado_hasta IS NULL) FROM operadores WHERE id = $CUENTA_ID")" = "1 true" ]; echo $?)" \
+    "$(sql "SELECT 'intentos=' || intentos_fallidos || ' bloqueada=' || COALESCE(bloqueado_hasta > now(), false) FROM operadores WHERE id = $CUENTA_ID")"
+entrar "$CUENTA_PRUEBA" "$CUENTA_CLAVE" "" "192.0.2.220"
+comprobar "Bloqueo por cuenta: con el bloqueo caducado la contraseña correcta vuelve a entrar, 200" "$([ "$CODIGO" = 200 ] && [ -n "$SESION" ]; echo $?)"
+OCULTAR+=("$SESION")
+
+# Doce intentos a la vez, cada uno desde una dirección distinta: solo cuatro
+# pueden llegar a comprobar la contraseña; el resto debe encontrar la cuenta ya
+# bloqueada.
+MARCA_AUDITORIA="$(sql "SELECT COALESCE(max(id), 0) FROM auditoria")"
+for n in $(seq 1 12); do
+    curl -sS -m 60 -o /dev/null -X POST "$API/api/sesion" -H 'X-RC: 1' -H 'Content-Type: application/json' \
+        -H "X-Forwarded-For: 192.0.2.$((230 + n))" \
+        --data "$(jq -n --arg u "$CUENTA_PRUEBA" --arg c "rafaga-$n" '{usuario:$u,clave:$c,codigo:""}')" &
+done
+wait
+COMPROBADAS="$(sql "SELECT count(*) FROM auditoria WHERE id > $MARCA_AUDITORIA AND operador = '$CUENTA_PRUEBA' AND detalle->>'motivo' = 'contraseña incorrecta'")"
+RECHAZADAS="$(sql "SELECT count(*) FROM auditoria WHERE id > $MARCA_AUDITORIA AND operador = '$CUENTA_PRUEBA' AND detalle->>'motivo' = 'cuenta bloqueada'")"
+comprobar "Bloqueo por cuenta: de doce intentos simultáneos solo cuatro llegan a comprobar la contraseña" \
+    "$([ "$COMPROBADAS" = 4 ] && [ "$RECHAZADAS" = 8 ]; echo $?)" "comprobadas=$COMPROBADAS rechazadas sin comprobar=$RECHAZADAS"
+
 api POST "/api/operadores/$CUENTA_ID/desbloquear" '{}'
 comprobar "Bloqueo por cuenta: un administrador puede desbloquearla, 200" "$(codigo_es 200; echo $?)"
 entrar "$CUENTA_PRUEBA" "$CUENTA_CLAVE" "" "192.0.2.220"
 comprobar "Bloqueo por cuenta: tras desbloquear, la cuenta vuelve a entrar, 200" "$([ "$CODIGO" = 200 ] && [ -n "$SESION" ]; echo $?)"
 OCULTAR+=("$SESION")
 api DELETE "/api/operadores/$CUENTA_ID"
+
+# ---------------------------------------------------------------- huellas con clave
+api GET /api/estado
+SHA_CLIENTS="$(docker exec radiuscontrol-api sha256sum /compilado/actual/clients.conf | cut -d' ' -f1)"
+SHA_AUTHORIZE="$(docker exec radiuscontrol-api sha256sum /compilado/actual/authorize | cut -d' ' -f1)"
+comprobar "Huellas: el panel no entrega el SHA-256 de los archivos que llevan secretos" \
+    "$([ "${#SHA_CLIENTS}" = 64 ] && ! printf '%s' "$CUERPO" | grep -q -e "$SHA_CLIENTS" -e "$SHA_AUTHORIZE"; echo $?)"
+comprobar "Huellas: con huellas con clave el panel sigue viendo que lo aplicado y lo cargado coinciden" \
+    "$(printf '%s' "$CUERPO" | jq -e '.sincronizado and (.cambios_pendientes | not) and (.activa.sha_clients | length) == 64 and .activa.sha_clients == .freeradius.sha_clients and .activa.sha_clients == .deseado.sha_clients' >/dev/null; echo $?)"
+comprobar "Huellas: la base tampoco guarda el SHA-256 a secas de ninguna versión" \
+    "$([ "$(sql "SELECT count(*) FROM versiones_config WHERE NOT huella_con_clave OR sha_clients = '$SHA_CLIENTS' OR sha_authorize = '$SHA_AUTHORIZE'")" = 0 ]; echo $?)"
 
 # Por el camino real (el proxy web) no se puede fingir otra dirección.
 curl -sk -m 30 -o /dev/null -X POST "https://$IP_PUBLICA/api/sesion" -H 'X-RC: 1' -H 'Content-Type: application/json' \

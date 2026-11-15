@@ -341,10 +341,51 @@ func (a *App) descifrarVersion(ctx context.Context, id int64) (*Compilado, error
 	if c.Authorize, err = a.cifra.Descifrar(ac, dominioVersion); err != nil {
 		return nil, err
 	}
-	if sha(c.Clients) != c.ShaClients || sha(c.Authorize) != c.ShaAuthorize {
+	// En la base está la huella con clave; dentro del programa se trabaja con
+	// el SHA-256 del contenido recién descifrado.
+	if a.cifra.Huella(sha(c.Clients)) != c.ShaClients || a.cifra.Huella(sha(c.Authorize)) != c.ShaAuthorize {
 		return nil, errors.New("la versión guardada no coincide con su huella")
 	}
+	c.ShaClients, c.ShaAuthorize = sha(c.Clients), sha(c.Authorize)
 	return c, nil
+}
+
+// convertirHuellas pasa a huella con clave las versiones guardadas antes de
+// que existiera. Se ejecuta al arrancar y no hace nada si ya están convertidas.
+func (a *App) convertirHuellas(ctx context.Context) error {
+	filas, err := a.db.Query(ctx, `SELECT id, sha_clients, sha_authorize FROM versiones_config
+		WHERE NOT huella_con_clave`)
+	if err != nil {
+		return err
+	}
+	type fila struct {
+		id     int64
+		sc, sa string
+	}
+	var pendientes []fila
+	for filas.Next() {
+		var f fila
+		if err := filas.Scan(&f.id, &f.sc, &f.sa); err != nil {
+			filas.Close()
+			return err
+		}
+		pendientes = append(pendientes, f)
+	}
+	filas.Close()
+	if err := filas.Err(); err != nil {
+		return err
+	}
+	for _, f := range pendientes {
+		if _, err := a.db.Exec(ctx, `UPDATE versiones_config SET sha_clients = $2, sha_authorize = $3,
+			huella_con_clave = true WHERE id = $1 AND NOT huella_con_clave`,
+			f.id, a.cifra.Huella(f.sc), a.cifra.Huella(f.sa)); err != nil {
+			return err
+		}
+	}
+	if len(pendientes) > 0 {
+		log.Printf("huellas: %d versiones pasadas a huella con clave", len(pendientes))
+	}
+	return nil
 }
 
 // restaurarCompilado vuelve a escribir la versión activa si el volumen
@@ -393,7 +434,7 @@ func (a *App) aplicarDeseado(ctx context.Context, operador, ip string) (id int64
 	var shaC, shaA string
 	err = a.db.QueryRow(ctx, `SELECT id, sha_clients, sha_authorize FROM versiones_config WHERE activa`).
 		Scan(&id, &shaC, &shaA)
-	if err == nil && shaC == c.ShaClients && shaA == c.ShaAuthorize {
+	if err == nil && shaC == a.cifra.Huella(c.ShaClients) && shaA == a.cifra.Huella(c.ShaAuthorize) {
 		return id, false, "", nil
 	}
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
@@ -409,9 +450,11 @@ func (a *App) aplicarDeseado(ctx context.Context, operador, ip string) (id int64
 		return 0, false, "", err
 	}
 	if err := a.db.QueryRow(ctx, `INSERT INTO versiones_config
-		(operador, estado, routers, usuarios, sha_clients, sha_authorize, clients_cifrado, authorize_cifrado)
-		VALUES ($1, 'validando', $2, $3, $4, $5, $6, $7) RETURNING id`,
-		operador, c.Routers, c.Usuarios, c.ShaClients, c.ShaAuthorize, cc, ac).Scan(&id); err != nil {
+		(operador, estado, routers, usuarios, sha_clients, sha_authorize, clients_cifrado, authorize_cifrado,
+		 huella_con_clave)
+		VALUES ($1, 'validando', $2, $3, $4, $5, $6, $7, true) RETURNING id`,
+		operador, c.Routers, c.Usuarios, a.cifra.Huella(c.ShaClients), a.cifra.Huella(c.ShaAuthorize), cc, ac).
+		Scan(&id); err != nil {
 		return 0, false, "", err
 	}
 
@@ -572,8 +615,14 @@ func (a *App) verEstado(w http.ResponseWriter, r *http.Request, _ *Operador) err
 	firewallAlDia := activa != nil && firewall != nil && firewall.Estado == "sincronizado" &&
 		firewall.UFWActivo && firewall.Version == strconv.FormatInt(activa.ID, 10)
 
+	// Todo lo que sale de aquí son huellas con clave: ni el SHA-256 de lo
+	// deseado ni el que declara FreeRADIUS llegan al navegador.
+	huellaDeseadoC, huellaDeseadoA := a.cifra.Huella(deseado.ShaClients), a.cifra.Huella(deseado.ShaAuthorize)
+	if cargado != nil {
+		cargado.ShaClients, cargado.ShaAuthorize = a.cifra.Huella(cargado.ShaClients), a.cifra.Huella(cargado.ShaAuthorize)
+	}
 	pendiente := activa == nil ||
-		activa.ShaClients != deseado.ShaClients || activa.ShaAuthorize != deseado.ShaAuthorize
+		activa.ShaClients != huellaDeseadoC || activa.ShaAuthorize != huellaDeseadoA
 	sincronizado := activa != nil && cargado != nil && cargado.Estado == "en-marcha" &&
 		cargado.ShaClients == activa.ShaClients && cargado.ShaAuthorize == activa.ShaAuthorize
 
@@ -582,7 +631,7 @@ func (a *App) verEstado(w http.ResponseWriter, r *http.Request, _ *Operador) err
 		"sincronizado":       sincronizado,
 		"deseado": map[string]any{
 			"routers": deseado.Routers, "usuarios": deseado.Usuarios,
-			"sha_clients": deseado.ShaClients, "sha_authorize": deseado.ShaAuthorize,
+			"sha_clients": huellaDeseadoC, "sha_authorize": huellaDeseadoA,
 		},
 		"activa":          activa,
 		"freeradius":      cargado,

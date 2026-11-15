@@ -3,7 +3,9 @@ package main
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/binary"
@@ -25,7 +27,11 @@ const (
 	dominioVersion = "config-version"
 )
 
-type Cifrador struct{ aead cipher.AEAD }
+type Cifrador struct {
+	aead cipher.AEAD
+	// Clave derivada de la maestra, solo para las huellas (ver Huella).
+	claveHuellas []byte
+}
 
 func nuevoCifrador(claveB64 string) (*Cifrador, error) {
 	clave, err := base64.StdEncoding.DecodeString(strings.TrimSpace(claveB64))
@@ -40,7 +46,24 @@ func nuevoCifrador(claveB64 string) (*Cifrador, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Cifrador{aead: aead}, nil
+	derivada := hmac.New(sha256.New, clave)
+	derivada.Write([]byte("radiuscontrol-huellas"))
+	return &Cifrador{aead: aead, claveHuellas: derivada.Sum(nil)}, nil
+}
+
+// Huella convierte el SHA-256 de un archivo compilado en una huella con clave.
+// Los archivos compilados llevan secretos y hashes de contraseñas; su SHA-256
+// a secas permitiría comprobar contraseñas candidatas fuera de línea a quien lo
+// viera. La huella con clave sirve igual para comparar dos versiones, pero no
+// se puede recalcular sin la clave maestra. Lo que sale de la API y lo que se
+// guarda en la base es siempre esta huella, nunca el SHA-256.
+func (c *Cifrador) Huella(sha string) string {
+	if sha == "" {
+		return ""
+	}
+	m := hmac.New(sha256.New, c.claveHuellas)
+	m.Write([]byte(sha))
+	return hex.EncodeToString(m.Sum(nil))
 }
 
 func (c *Cifrador) Cifrar(claro []byte, dominio string) ([]byte, error) {

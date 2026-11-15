@@ -126,6 +126,18 @@ export function ProveedorApp({ children }: { children: React.ReactNode }) {
     setAviso(null);
   };
 
+  // Al terminar la sesión (por inactividad, revocación o cierre) no puede quedar
+  // a la vista ninguna ventana: podría estar mostrando una contraseña o un
+  // secreto recién generado. Una confirmación pendiente se da por rechazada.
+  React.useEffect(() => {
+    if (operador !== null) return;
+    setAviso((actual) => {
+      actual?.confirmar?.resolver(false);
+      return null;
+    });
+    setCopiado(false);
+  }, [operador]);
+
   return (
     <Ctx.Provider value={valor}>
       {cargando ? null : children}

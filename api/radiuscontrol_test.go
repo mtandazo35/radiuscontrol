@@ -52,6 +52,32 @@ func TestCifradoSeparaDominios(t *testing.T) {
 	}
 }
 
+func TestHuellaConClave(t *testing.T) {
+	c := cifradorDePrueba(t)
+	original := sha([]byte("contenido de un archivo compilado"))
+	h := c.Huella(original)
+	if len(h) != 64 || h == original {
+		t.Fatalf("la huella debe tener 64 caracteres y no ser el SHA-256 de entrada: %q", h)
+	}
+	if c.Huella(original) != h {
+		t.Fatal("la misma entrada debe dar siempre la misma huella")
+	}
+	if c.Huella(sha([]byte("otro contenido"))) == h {
+		t.Fatal("contenidos distintos deben dar huellas distintas")
+	}
+	if c.Huella("") != "" {
+		t.Fatal("sin SHA-256 no hay huella")
+	}
+	// Con otra clave maestra la huella cambia: no se puede recalcular sin ella.
+	otra, err := nuevoCifrador(base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if otra.Huella(original) == h {
+		t.Fatal("la huella debe depender de la clave maestra")
+	}
+}
+
 func TestClaveMaestraInvalida(t *testing.T) {
 	if _, err := nuevoCifrador("corta"); err == nil {
 		t.Fatal("debe rechazar una clave que no tenga 32 bytes")
