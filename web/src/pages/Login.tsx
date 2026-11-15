@@ -158,7 +158,7 @@ export default function Login() {
         </p>
       </section>
 
-      <main className="flex flex-col items-center justify-between gap-8 px-6 py-6 sm:px-10 lg:px-16 lg:py-8">
+      <main className="flex flex-col items-center bg-gradient-to-br from-[#BFD9E8] via-[#E3EEF4] to-[#F8FAFC] dark:from-[#12344A] dark:via-[#0E2030] dark:to-[#0B131D] justify-between gap-8 px-6 py-6 sm:px-10 lg:px-16 lg:py-8">
         <div className="flex w-full justify-end">
           <button
             type="button"
