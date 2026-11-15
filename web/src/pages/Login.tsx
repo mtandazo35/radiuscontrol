@@ -38,39 +38,44 @@ function Diagrama({ fase }: { fase: Fase }) {
   const f = fases[fase];
 
   return (
-    <div className="w-full max-w-md">
-      <div className="relative flex items-center">
-        <span className="size-3 shrink-0 rounded-full border-2" style={{ borderColor: tinta.linea }} />
+    <div className="w-full max-w-xl">
+      {/* Un solo dibujo a escala: los rótulos van fuera de los anillos y nada
+          se sale del panel, tampoco en un teléfono. */}
+      <svg viewBox="0 0 480 270" className="block w-full" role="img" aria-label="Tu navegador pide acceso a RadiusControl">
+        {/* Los discos son el «radio»: el alcance del servidor. */}
+        {[104, 72, 40].map((r, i) => (
+          <circle key={r} cx={352} cy={116} r={r} fill={tinta.anillos[2 - i]} />
+        ))}
+        <line x1={28} y1={116} x2={352} y2={116} stroke={tinta.trazo} strokeWidth={2} />
 
-        <div className="relative mx-3 h-0.5 flex-1" style={{ backgroundColor: tinta.trazo }}>
-          <span
-            aria-hidden="true"
-            className="absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full transition-[left,background-color] duration-700 ease-out motion-reduce:transition-none"
-            style={{ left: `${posicion}%`, backgroundColor: color }}
-          />
-        </div>
+        <circle cx={28} cy={116} r={11} fill={tinta.fondo} stroke={tinta.linea} strokeWidth={2} />
+        <circle
+          cx={352}
+          cy={116}
+          r={11}
+          fill={color}
+          className="transition-[fill] duration-700 motion-reduce:transition-none"
+        />
+        {/* La petición: en reposo descansa dentro del nodo del navegador. */}
+        <circle
+          cx={28}
+          cy={116}
+          r={6}
+          fill={color}
+          className="transition-[transform,fill] duration-700 ease-out motion-reduce:transition-none"
+          style={{ transform: `translateX(${(posicion / 100) * 324}px)` }}
+        />
 
-        {/* Los anillos son el «radio»: el alcance del servidor. */}
-        <span className="relative flex size-3 shrink-0 items-center justify-center">
-          {[40, 76, 116].map((d, i) => (
-            <span
-              key={d}
-              aria-hidden="true"
-              className="absolute rounded-full border-2"
-              style={{ width: d, height: d, borderColor: tinta.anillos[i] }}
-            />
-          ))}
-          <span className="size-3 rounded-full transition-colors duration-700 motion-reduce:transition-none" style={{ backgroundColor: color }} />
-        </span>
-      </div>
+        <text x={12} y={152} fontSize={15} fill={tinta.tenue} className="font-titulo">
+          Tu navegador
+        </text>
+        <text x={352} y={250} fontSize={15} fill={tinta.tenue} textAnchor="middle" className="font-titulo">
+          RadiusControl
+        </text>
+      </svg>
 
-      <div className="mt-4 flex justify-between font-titulo text-sm" style={{ color: tinta.tenue }}>
-        <span>Tu navegador</span>
-        <span>RadiusControl</span>
-      </div>
-
-      <p className="mt-10 min-h-[3.5rem] font-titulo" aria-live="polite">
-        <span className="block text-2xl font-semibold leading-tight" style={{ color: fase === "reposo" ? tinta.texto : color }}>
+      <p className="mt-8 min-h-[4.5rem] font-titulo" aria-live="polite">
+        <span className="block text-3xl font-semibold leading-tight" style={{ color: fase === "reposo" ? tinta.texto : color }}>
           {f.texto}
         </span>
         {f.termino && (
@@ -142,7 +147,7 @@ export default function Login() {
         </p>
       </section>
 
-      <main className="flex flex-col justify-between gap-8 px-6 py-8 sm:px-10 lg:px-16 lg:py-12">
+      <main className="flex flex-col items-center justify-between gap-8 px-6 py-8 sm:px-10 lg:px-16 lg:py-12">
         <div className="hidden lg:block" />
 
         <div className="w-full max-w-sm">
@@ -192,7 +197,7 @@ export default function Login() {
           </form>
         </div>
 
-        <p className="text-xs text-muted-foreground">Versión {VERSION}. Desarrollado por MAAT.</p>
+        <p className="w-full max-w-sm text-xs text-muted-foreground">Versión {VERSION}. Desarrollado por MAAT.</p>
       </main>
     </div>
   );
