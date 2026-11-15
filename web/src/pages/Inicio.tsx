@@ -158,14 +158,14 @@ function Grafico({ datos }: { datos: Resumen }) {
   return (
     <div className="flex gap-2">
       {/* Eje: fuera del dibujo para que ninguna barra tape las cifras. */}
-      <div className="flex h-52 flex-col justify-between pt-[10px] text-right font-mono text-[11px] leading-none text-muted-foreground">
+      <div className="flex h-[21rem] flex-col justify-between pt-[10px] text-right font-mono text-[11px] leading-none text-muted-foreground">
         {marcas.map((m) => (
           <span key={m}>{Number.isInteger(maximo * m) ? maximo * m : ""}</span>
         ))}
       </div>
       <div className="min-w-0 flex-1">
         <div className="relative">
-          <svg viewBox={`0 0 ${ancho} ${alto}`} className="block h-52 w-full" preserveAspectRatio="none" role="img" aria-label="Autenticaciones aceptadas y rechazadas por tramo">
+          <svg viewBox={`0 0 ${ancho} ${alto}`} className="block h-[21rem] w-full" preserveAspectRatio="none" role="img" aria-label="Autenticaciones aceptadas y rechazadas por tramo">
             {marcas.map((m) => (
               <line key={m} x1={0} x2={ancho} y1={alto - m * util} y2={alto - m * util} className="stroke-border" strokeWidth={1} strokeDasharray={m === 0 ? undefined : "3 4"} vectorEffect="non-scaling-stroke" />
             ))}
