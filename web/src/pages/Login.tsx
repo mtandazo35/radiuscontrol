@@ -1,4 +1,5 @@
 import * as React from "react";
+import { Check, CircleAlert, Clock, Eye, EyeOff, KeyRound, LoaderCircle, Lock, Moon, ShieldCheck, Sun, User } from "lucide-react";
 import { Button, Input, Label } from "@/components/ui";
 import { api, ErrorApi, type Operador } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -97,6 +98,16 @@ export default function Login() {
   const [error, setError] = React.useState("");
   const [fase, setFase] = React.useState<Fase>("reposo");
   const ocupado = fase === "enviando" || fase === "aceptado";
+  const [verClave, setVerClave] = React.useState(false);
+  const [mayusculas, setMayusculas] = React.useState(false);
+  const [oscuro, setOscuro] = React.useState(() => document.documentElement.classList.contains("dark"));
+
+  const cambiarTema = () => {
+    const nuevo = !oscuro;
+    document.documentElement.classList.toggle("dark", nuevo);
+    localStorage.setItem("rc-tema", nuevo ? "oscuro" : "claro");
+    setOscuro(nuevo);
+  };
 
   const entrar = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -147,57 +158,142 @@ export default function Login() {
         </p>
       </section>
 
-      <main className="flex flex-col items-center justify-between gap-8 px-6 py-8 sm:px-10 lg:px-16 lg:py-12">
-        <div className="hidden lg:block" />
-
-        <div className="w-full max-w-sm">
-          <h1 className="font-titulo text-4xl font-semibold tracking-tight">Entrar al panel</h1>
-          <p className="mt-2 text-sm text-muted-foreground">Con tu cuenta de operador.</p>
-
-          {motivoSalida && (
-            <p role="status" className="mt-6 rounded-md border border-warning/50 p-3 text-sm text-warning">
-              {motivoSalida}
-            </p>
-          )}
-
-          <form onSubmit={entrar} className="mt-8 space-y-5">
-            <div className="space-y-2">
-              <Label htmlFor="usuario">Usuario</Label>
-              <Input id="usuario" className="h-11" autoComplete="username" autoFocus required value={usuario} onChange={alEscribir(setUsuario)} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="clave">Contraseña</Label>
-              <Input id="clave" className="h-11" type="password" autoComplete="current-password" required value={clave} onChange={alEscribir(setClave)} />
-            </div>
-            {pideCodigo && (
-              <div className="space-y-2">
-                <Label htmlFor="codigo">Código de verificación</Label>
-                <Input
-                  id="codigo"
-                  className="h-11 tracking-[0.3em]"
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  autoFocus
-                  required
-                  maxLength={7}
-                  value={codigo}
-                  onChange={alEscribir(setCodigo)}
-                />
-                <p className="text-xs text-muted-foreground">Las 6 cifras que muestra tu aplicación de autenticación.</p>
-              </div>
-            )}
-            {error && (
-              <p role="alert" className="text-sm text-destructive">
-                {error}
-              </p>
-            )}
-            <Button type="submit" className={cn("h-11 w-full text-base", fase === "aceptado" && "bg-success hover:bg-success")} disabled={ocupado}>
-              {fase === "enviando" ? "Comprobando…" : fase === "aceptado" ? "Entrando…" : "Entrar"}
-            </Button>
-          </form>
+      <main className="flex flex-col items-center justify-between gap-8 px-6 py-6 sm:px-10 lg:px-16 lg:py-8">
+        <div className="flex w-full justify-end">
+          <button
+            type="button"
+            onClick={cambiarTema}
+            aria-label={oscuro ? "Cambiar a tema claro" : "Cambiar a tema oscuro"}
+            title={oscuro ? "Tema claro" : "Tema oscuro"}
+            className="flex size-11 items-center justify-center rounded-md border bg-card text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {oscuro ? <Sun className="size-5" aria-hidden="true" /> : <Moon className="size-5" aria-hidden="true" />}
+          </button>
         </div>
 
-        <p className="w-full max-w-sm text-xs text-muted-foreground">Versión {VERSION}. Desarrollado por MAAT.</p>
+        <div className="w-full max-w-md">
+          <div className="rounded-xl border border-t-4 border-t-primary bg-card p-6 sm:p-9">
+            <h1 className="font-titulo text-4xl font-semibold tracking-tight">Entrar al panel</h1>
+            <p className="mt-2 text-base text-muted-foreground">Usa tu cuenta de operador.</p>
+
+            {motivoSalida && (
+              <p role="status" className="mt-6 flex gap-2.5 rounded-md border border-warning bg-background p-3 text-sm text-warning">
+                <Clock className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                <span>{motivoSalida}</span>
+              </p>
+            )}
+
+            <form onSubmit={entrar} className="mt-8 space-y-5">
+              <div className="space-y-2">
+                <Label htmlFor="usuario" className="text-sm font-medium">
+                  Usuario
+                </Label>
+                <div className="relative">
+                  <User className="pointer-events-none absolute left-3.5 top-1/2 size-[18px] -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                  <Input
+                    id="usuario"
+                    className="h-12 bg-background pl-11 text-base"
+                    autoComplete="username"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    autoFocus
+                    required
+                    value={usuario}
+                    onChange={alEscribir(setUsuario)}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="clave" className="text-sm font-medium">
+                  Contraseña
+                </Label>
+                <div className="relative">
+                  <Lock className="pointer-events-none absolute left-3.5 top-1/2 size-[18px] -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                  <Input
+                    id="clave"
+                    className="h-12 bg-background pl-11 pr-12 text-base"
+                    type={verClave ? "text" : "password"}
+                    autoComplete="current-password"
+                    required
+                    value={clave}
+                    onChange={alEscribir(setClave)}
+                    onKeyUp={(e) => setMayusculas(e.getModifierState("CapsLock"))}
+                    onBlur={() => setMayusculas(false)}
+                    aria-describedby={mayusculas ? "aviso-mayusculas" : undefined}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setVerClave((v) => !v)}
+                    aria-label={verClave ? "Ocultar la contraseña" : "Mostrar la contraseña"}
+                    aria-pressed={verClave}
+                    className="absolute right-0.5 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    {verClave ? <EyeOff className="size-[18px]" aria-hidden="true" /> : <Eye className="size-[18px]" aria-hidden="true" />}
+                  </button>
+                </div>
+                {mayusculas && (
+                  <p id="aviso-mayusculas" className="text-sm text-warning">
+                    Las mayúsculas están activadas.
+                  </p>
+                )}
+              </div>
+
+              {pideCodigo && (
+                <div className="space-y-2">
+                  <Label htmlFor="codigo" className="text-sm font-medium">
+                    Código de verificación
+                  </Label>
+                  <div className="relative">
+                    <KeyRound className="pointer-events-none absolute left-3.5 top-1/2 size-[18px] -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                    <Input
+                      id="codigo"
+                      className="h-12 bg-background pl-11 text-base tracking-[0.3em]"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      autoFocus
+                      required
+                      maxLength={7}
+                      value={codigo}
+                      onChange={alEscribir(setCodigo)}
+                    />
+                  </div>
+                  <p className="text-sm text-muted-foreground">Las 6 cifras que muestra tu aplicación de autenticación.</p>
+                </div>
+              )}
+
+              {error && (
+                <p role="alert" className="flex gap-2.5 rounded-md border border-destructive bg-background p-3 text-sm text-destructive">
+                  <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                  <span>{error}</span>
+                </p>
+              )}
+
+              <Button
+                type="submit"
+                className={cn("h-12 w-full gap-2 text-base font-semibold", fase === "aceptado" && "bg-success hover:bg-success")}
+                disabled={ocupado}
+              >
+                {fase === "enviando" && <LoaderCircle className="size-[18px] animate-spin motion-reduce:animate-none" aria-hidden="true" />}
+                {fase === "aceptado" && <Check className="size-[18px]" aria-hidden="true" />}
+                {fase === "enviando" ? "Comprobando…" : fase === "aceptado" ? "Entrando…" : "Entrar"}
+              </Button>
+            </form>
+          </div>
+
+          <p className="mt-5 flex gap-2.5 px-1 text-sm leading-relaxed text-muted-foreground">
+            <ShieldCheck className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            <span>
+              El acceso se bloquea tras varios intentos fallidos. Si olvidaste tu contraseña, pide a un administrador que la
+              restablezca.
+            </span>
+          </p>
+        </div>
+
+        <p className="flex w-full max-w-md justify-between gap-4 px-1 text-xs text-muted-foreground">
+          <span>Versión {VERSION}</span>
+          <span>Desarrollado por MAAT</span>
+        </p>
       </main>
     </div>
   );
