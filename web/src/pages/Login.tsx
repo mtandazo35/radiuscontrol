@@ -75,7 +75,7 @@ function Diagrama({ fase }: { fase: Fase }) {
       </svg>
 
       <p className="mt-8 min-h-[4.5rem] font-titulo" aria-live="polite">
-        <span className="block text-3xl font-semibold leading-tight" style={{ color: fase === "reposo" ? tinta.texto : color }}>
+        <span className="block text-2xl font-semibold sm:text-3xl leading-tight" style={{ color: fase === "reposo" ? tinta.texto : color }}>
           {f.texto}
         </span>
         {f.termino && (
