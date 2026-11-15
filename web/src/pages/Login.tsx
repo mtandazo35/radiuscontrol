@@ -21,14 +21,14 @@ const fases: Record<Fase, { termino: string; texto: string }> = {
 // Colores del panel del diagrama: fijos, no dependen del tema claro u oscuro.
 // Todos son colores planos: sin degradados ni transparencias.
 const tinta = {
-  fondo: "#0D2B3E",
-  trazo: "#3E7D97",
-  anillos: ["#235069", "#1A4259", "#14374C"],
-  linea: "#7FD3EE",
-  texto: "#E6F4FA",
-  tenue: "#9CC3D4",
-  aceptado: "#5FD39A",
-  rechazado: "#FF8A80",
+  fondo: "#111827",
+  trazo: "#334155",
+  anillos: ["#1F2937", "#182233", "#141C2B"],
+  linea: "#60A5FA",
+  texto: "#F8FAFC",
+  tenue: "#94A3B8",
+  aceptado: "#10B981",
+  rechazado: "#EF4444",
 };
 
 function Diagrama({ fase }: { fase: Fase }) {
@@ -67,15 +67,15 @@ function Diagrama({ fase }: { fase: Fase }) {
           style={{ transform: `translateX(${(posicion / 100) * 324}px)` }}
         />
 
-        <text x={12} y={152} fontSize={15} fill={tinta.tenue} className="font-titulo">
+        <text x={12} y={152} fontSize={15} fill={tinta.tenue} >
           Tu navegador
         </text>
-        <text x={352} y={250} fontSize={15} fill={tinta.tenue} textAnchor="middle" className="font-titulo">
+        <text x={352} y={250} fontSize={15} fill={tinta.tenue} textAnchor="middle" >
           RadiusControl
         </text>
       </svg>
 
-      <p className="mt-8 min-h-[4.5rem] font-titulo" aria-live="polite">
+      <p className="mt-8 min-h-[4.5rem]" aria-live="polite">
         <span className="block text-2xl font-semibold sm:text-3xl leading-tight" style={{ color: fase === "reposo" ? tinta.texto : color }}>
           {f.texto}
         </span>
@@ -142,12 +142,12 @@ export default function Login() {
   };
 
   return (
-    <div className="grid min-h-screen font-cuerpo lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
+    <div className="grid min-h-screen lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
       <section
         className="flex flex-col justify-between gap-8 px-6 py-8 sm:px-10 lg:px-14 lg:py-12"
         style={{ backgroundColor: tinta.fondo, color: tinta.texto }}
       >
-        <p className="font-titulo text-xl font-semibold tracking-tight">RadiusControl</p>
+        <p className="text-xl font-semibold tracking-tight">RadiusControl</p>
 
         <div className="flex flex-1 items-center py-6 lg:py-0">
           <Diagrama fase={fase} />
@@ -158,7 +158,7 @@ export default function Login() {
         </p>
       </section>
 
-      <main className="flex flex-col items-center bg-gradient-to-br from-[#BFD9E8] via-[#E3EEF4] to-[#F8FAFC] dark:from-[#12344A] dark:via-[#0E2030] dark:to-[#0B131D] justify-between gap-8 px-6 py-6 sm:px-10 lg:px-16 lg:py-8">
+      <main className="flex flex-col items-center bg-gradient-to-br from-[#D5E1F5] via-[#EAF0F9] to-[#F8FAFC] dark:from-[#131C2E] dark:via-[#0C111C] dark:to-[#090D16] justify-between gap-8 px-6 py-6 sm:px-10 lg:px-16 lg:py-8">
         <div className="flex w-full justify-end">
           <button
             type="button"
@@ -173,7 +173,7 @@ export default function Login() {
 
         <div className="w-full max-w-md">
           <div className="rounded-xl border border-t-4 border-t-primary bg-card p-6 sm:p-9">
-            <h1 className="font-titulo text-[2.75rem] font-semibold leading-none">Entrar al panel</h1>
+            <h1 className="text-4xl font-semibold leading-none tracking-tight">Entrar al panel</h1>
             <p className="mt-3 text-lg text-muted-foreground">Usa tu cuenta de operador.</p>
 
             {motivoSalida && (
@@ -271,7 +271,7 @@ export default function Login() {
 
               <Button
                 type="submit"
-                className={cn("h-12 w-full gap-2 font-titulo text-lg font-semibold tracking-wide", fase === "aceptado" && "bg-success hover:bg-success")}
+                className={cn("h-12 w-full gap-2 text-base font-semibold", fase === "aceptado" && "bg-success hover:bg-success")}
                 disabled={ocupado}
               >
                 {fase === "enviando" && <LoaderCircle className="size-[18px] animate-spin motion-reduce:animate-none" aria-hidden="true" />}

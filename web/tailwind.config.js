@@ -18,12 +18,12 @@ export default {
         card: { DEFAULT: "hsl(var(--card))", foreground: "hsl(var(--card-foreground))" },
         success: "hsl(var(--success))",
         warning: "hsl(var(--warning))",
+        consola: "hsl(var(--consola))",
       },
       fontFamily: {
-        // Títulos y rótulos. Se sirve desde el propio panel (ver main.tsx).
-        titulo: ['"Barlow Semi Condensed"', "ui-sans-serif", "system-ui", '"Segoe UI"', "sans-serif"],
-        // Texto corrido del inicio de sesión: la misma familia, sin condensar.
-        cuerpo: ["Barlow", "ui-sans-serif", "system-ui", '"Segoe UI"', "sans-serif"],
+        // Se sirven desde el propio panel (ver main.tsx), sin pedir nada fuera.
+        sans: ['"Inter Variable"', "Inter", "system-ui", "-apple-system", '"Segoe UI"', "sans-serif"],
+        mono: ['"JetBrains Mono Variable"', '"JetBrains Mono"', "ui-monospace", "SFMono-Regular", "Consolas", "monospace"],
       },
       borderRadius: { lg: "var(--radius)", md: "calc(var(--radius) - 2px)", sm: "calc(var(--radius) - 4px)" },
     },

@@ -3,57 +3,74 @@
 @tailwind utilities;
 
 @layer base {
+  /* Tema claro: equivalente del sistema oscuro, que es el de referencia. */
   :root {
-    --background: 210 20% 98%;
+    --background: 210 40% 98%;
     --foreground: 222 47% 11%;
     --card: 0 0% 100%;
     --card-foreground: 222 47% 11%;
-    --primary: 199 89% 32%;
+    --primary: 221 83% 53%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 210 20% 93%;
+    --secondary: 214 32% 93%;
     --secondary-foreground: 222 47% 11%;
-    --muted: 210 20% 94%;
-    --muted-foreground: 215 16% 40%;
-    --accent: 199 60% 92%;
-    --accent-foreground: 199 89% 22%;
+    --muted: 214 32% 95%;
+    --muted-foreground: 215 19% 35%;
+    --accent: 214 60% 93%;
+    --accent-foreground: 224 76% 36%;
     --destructive: 0 72% 45%;
     --destructive-foreground: 0 0% 100%;
-    --success: 152 60% 30%;
-    --warning: 32 90% 38%;
-    --border: 214 20% 86%;
-    --input: 214 20% 80%;
-    --ring: 199 89% 32%;
+    --success: 160 84% 26%;
+    --warning: 32 90% 36%;
+    --border: 214 32% 86%;
+    --input: 214 25% 78%;
+    --ring: 221 83% 53%;
+    --consola: 214 32% 95%;
     --radius: 0.5rem;
   }
 
+  /* Tema oscuro: lienzo #090D16, superficie #111827, elevado #1F2937,
+     borde #1E293B. Nunca negro puro. */
   .dark {
-    --background: 222 30% 8%;
-    --foreground: 210 30% 94%;
-    --card: 222 28% 11%;
-    --card-foreground: 210 30% 94%;
-    --primary: 199 85% 52%;
-    --primary-foreground: 222 47% 8%;
-    --secondary: 220 20% 18%;
-    --secondary-foreground: 210 30% 94%;
-    --muted: 220 20% 16%;
-    --muted-foreground: 215 18% 68%;
-    --accent: 199 40% 18%;
-    --accent-foreground: 199 85% 78%;
-    --destructive: 0 70% 56%;
+    --background: 222 42% 6%;
+    --foreground: 210 40% 98%;
+    --card: 221 39% 11%;
+    --card-foreground: 210 40% 98%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 215 28% 17%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 215 28% 17%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 215 28% 17%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
-    --success: 152 55% 55%;
-    --warning: 38 90% 60%;
-    --border: 220 18% 22%;
-    --input: 220 18% 28%;
-    --ring: 199 85% 52%;
+    --success: 160 84% 39%;
+    --warning: 38 92% 50%;
+    --border: 217 33% 17%;
+    --input: 217 25% 27%;
+    --ring: 217 91% 60%;
+    --consola: 222 50% 4%;
   }
 
   * {
     @apply border-border;
   }
 
+  /* Escala compacta: con 15px de raíz, el texto habitual (text-sm) queda en
+     13px y el pequeño (text-xs) en 11px. */
+  html {
+    font-size: 15px;
+  }
+
   body {
-    @apply bg-background text-foreground antialiased;
-    font-family: ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+    @apply bg-background font-sans text-foreground antialiased;
+  }
+
+  /* Los datos técnicos no deben bailar al refrescarse. */
+  .font-mono,
+  code,
+  pre {
+    font-variant-numeric: tabular-nums;
   }
 }

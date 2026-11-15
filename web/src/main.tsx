@@ -3,15 +3,13 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import { ProveedorApp } from "./contexto";
-import "@fontsource/barlow/400.css";
-import "@fontsource/barlow/500.css";
-import "@fontsource/barlow/600.css";
-import "@fontsource/barlow-semi-condensed/500.css";
-import "@fontsource/barlow-semi-condensed/600.css";
+import "@fontsource-variable/inter";
+import "@fontsource-variable/jetbrains-mono";
 import "./index.css";
 
 const guardado = localStorage.getItem("rc-tema");
-const oscuro = guardado ? guardado === "oscuro" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+// Oscuro por defecto; el claro queda a elección de cada persona.
+const oscuro = guardado ? guardado === "oscuro" : true;
 document.documentElement.classList.toggle("dark", oscuro);
 
 createRoot(document.getElementById("root")!).render(
