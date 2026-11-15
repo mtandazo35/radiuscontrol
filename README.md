@@ -217,11 +217,3 @@ propia cuenta, y los borra al terminar. La evidencia queda en `despliegue/eviden
 
 Tecnologías: FreeRADIUS 3.2.x, Go, React + TypeScript + Tailwind, PostgreSQL y Docker
 Compose.
-
-## Reglas del repositorio
-
-- Ningún dato real entra aquí: ni nombres de clientes, ni direcciones IP reales, ni
-  secretos, ni volcados de routers. Los ejemplos usan nombres genéricos y rangos de
-  documentación (`192.0.2.0/24`, `198.51.100.0/24`, `2001:db8::/32`).
-- Los datos reales de trabajo van en `datos/`, que git ignora.
-- Finales de línea LF en todo el repositorio.
