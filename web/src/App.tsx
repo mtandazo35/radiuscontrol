@@ -135,7 +135,10 @@ function Marco({ children }: { children: React.ReactNode }) {
           </Button>
           <MenuUsuario />
         </header>
-        <main className="mx-auto max-w-6xl p-4 md:p-6">{children}</main>
+        {/* El contenido usa todo el ancho disponible: las tablas con varias
+            acciones no caben en una columna estrecha. El tope solo evita que
+            las líneas se hagan ilegibles en pantallas muy anchas. */}
+        <main className="mx-auto w-full max-w-[1800px] p-4 md:p-6">{children}</main>
       </div>
     </div>
   );
