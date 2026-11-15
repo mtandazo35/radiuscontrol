@@ -4,6 +4,7 @@ import { BotonVaciar } from "@/components/Vaciar";
 import { api, type PaginaAutenticaciones } from "@/lib/api";
 import { fecha } from "@/lib/utils";
 import { useApp } from "../contexto";
+import { useFiltro } from "../filtro";
 
 // FreeRADIUS explica los rechazos en su propio idioma; los más habituales se
 // traducen a algo que se entienda sin conocerlo.
@@ -20,6 +21,7 @@ function motivoLegible(motivo: string) {
 
 export default function Autenticaciones() {
   const { avisarError } = useApp();
+  const { routerId } = useFiltro();
   const [datos, setDatos] = React.useState<PaginaAutenticaciones | null>(null);
   const [resultado, setResultado] = React.useState("");
   const [buscar, setBuscar] = React.useState("");
@@ -27,12 +29,18 @@ export default function Autenticaciones() {
   const [tamano, setTamano] = React.useState(25);
   const lista = datos?.autenticaciones;
 
+  // Al cambiar de router se vuelve a la primera página.
+  React.useEffect(() => {
+    setPagina(1);
+  }, [routerId]);
+
   const cargar = React.useCallback(
     async (avisar: boolean) => {
       try {
         const q = new URLSearchParams({ pagina: String(pagina), tamano: String(tamano) });
         if (resultado) q.set("resultado", resultado);
         if (buscar.trim()) q.set("buscar", buscar.trim());
+        if (routerId !== null) q.set("router", String(routerId));
         const r = await api<PaginaAutenticaciones>("GET", `/autenticaciones?${q}`, undefined, { auto: !avisar });
         setDatos(r);
         // El servidor corrige una página que ya no existe.
@@ -41,7 +49,7 @@ export default function Autenticaciones() {
         if (avisar) avisarError(e);
       }
     },
-    [resultado, buscar, pagina, tamano, avisarError],
+    [resultado, buscar, routerId, pagina, tamano, avisarError],
   );
 
   React.useEffect(() => {
@@ -59,7 +67,6 @@ export default function Autenticaciones() {
     <div className="space-y-4">
       <div>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h1 className="text-2xl font-semibold tracking-tight">Autenticaciones</h1>
           <BotonVaciar
             registro="autenticaciones"
             onHecho={() => {

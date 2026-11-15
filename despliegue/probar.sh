@@ -287,6 +287,14 @@ comprobar "Registro: el login aceptado por MS-CHAP queda anotado con su método"
 comprobar "Registro: el rechazo por contraseña incorrecta queda anotado con su motivo"     "$(tiene '.resultado == "rechazado" and .metodo == "PAP" and (.motivo | length) > 0'; echo $?)"     "$(printf '%s' "$REG" | jq -c '[.autenticaciones[] | select(.resultado == "rechazado")][0] | {resultado, metodo, motivo}')"
 api GET "/api/autenticaciones?buscar=no-existe&resultado=rechazado"
 comprobar "Registro: el intento de un usuario inexistente queda anotado"     "$([ "$(printf '%s' "$CUERPO" | jq '.total')" -gt 0 ]; echo $?)"
+RID="$(printf '%s' "$REG" | jq '[.autenticaciones[] | select(.router == "prueba-automatica")][0].router_id')"
+api GET "/api/autenticaciones?router=$RID&tamano=100"
+comprobar "Registro: el filtro por router solo devuelve logins de ese router" \
+    "$(printf '%s' "$CUERPO" | jq -e --argjson r "$RID" '.total > 0 and ([.autenticaciones[] | select(.router_id != $r)] | length) == 0' >/dev/null; echo $?)" \
+    "$(printf '%s' "$CUERPO" | jq -c '{total}')"
+api GET "/api/autenticaciones?router=999999999"
+comprobar "Registro: el filtro por un router que no existe no devuelve nada" \
+    "$([ "$(printf '%s' "$CUERPO" | jq '.total')" -eq 0 ]; echo $?)"
 api GET "/api/autenticaciones?buscar=$USUARIO_PRUEBA&tamano=2&pagina=1"
 A1="$CUERPO"
 api GET "/api/autenticaciones?buscar=$USUARIO_PRUEBA&tamano=2&pagina=2"

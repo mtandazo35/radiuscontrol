@@ -126,7 +126,6 @@ export default function Usuarios() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Usuarios MikroTik</h1>
           <p className="text-sm text-muted-foreground">
             Personas que entran a los routers por WinBox, SSH o WebFig. El grupo debe existir en cada router.
           </p>

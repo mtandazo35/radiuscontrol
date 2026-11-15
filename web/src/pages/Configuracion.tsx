@@ -39,7 +39,6 @@ export default function Configuracion() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Configuración</h1>
         <p className="text-sm text-muted-foreground">
           Lo que el panel tiene guardado, lo que se aplicó, lo que FreeRADIUS declara tener cargado y lo que el firewall
           deja pasar. Los cambios se aplican solos a los pocos segundos de guardarlos.

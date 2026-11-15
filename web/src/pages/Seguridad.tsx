@@ -584,7 +584,6 @@ export default function Seguridad() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Seguridad</h1>
         <p className="text-sm text-muted-foreground">
           Acceso a la plataforma: quién puede entrar, las sesiones abiertas y el registro de lo que se hace. Tu contraseña y tu verificación en dos pasos están en el botón «Mi cuenta».
         </p>

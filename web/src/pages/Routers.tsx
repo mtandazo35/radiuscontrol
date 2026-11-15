@@ -5,6 +5,7 @@ import { Badge, Button, Card, Dialog, DialogContent, DialogFooter, Input, Label,
 import { api, type Empresa, type ModoAcceso, type RespuestaRouter, type Router, type Usuario } from "@/lib/api";
 import { fecha } from "@/lib/utils";
 import { useApp } from "../contexto";
+import { useFiltro } from "../filtro";
 
 interface Formulario {
   id: number | null;
@@ -49,6 +50,7 @@ function InsigniaAcceso({ r }: { r: Router }) {
 
 export default function Routers() {
   const { avisar, avisarError, confirmar, refrescarEstado } = useApp();
+  const { routerId, recargarRouters } = useFiltro();
   const [lista, setLista] = React.useState<Router[] | null>(null);
   const [form, setForm] = React.useState<Formulario | null>(null);
   const [ocupado, setOcupado] = React.useState(false);
@@ -59,16 +61,20 @@ export default function Routers() {
   const cargar = React.useCallback(async () => {
     try {
       setLista(await api<Router[]>("GET", "/routers"));
+      recargarRouters();
       setEmpresas(await api<Empresa[]>("GET", "/empresas"));
       setUsuarios(await api<Usuario[]>("GET", "/usuarios"));
     } catch (e) {
       avisarError(e);
     }
-  }, [avisarError]);
+  }, [avisarError, recargarRouters]);
 
   React.useEffect(() => {
     cargar();
   }, [cargar]);
+
+  // El filtro de la barra superior deja a la vista un solo router.
+  const visibles = lista && routerId !== null ? lista.filter((r) => r.id === routerId) : lista;
 
   const tras = async () => {
     await cargar();
@@ -179,7 +185,6 @@ export default function Routers() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Routers</h1>
           <p className="text-sm text-muted-foreground">
             Cada router se identifica por la dirección de origen de sus paquetes y tiene su propio secreto. El firewall del servidor solo deja pasar al puerto RADIUS las redes de los routers activos.
           </p>
@@ -208,14 +213,14 @@ export default function Routers() {
             </tr>
           </thead>
           <tbody>
-            {lista?.length === 0 && (
+            {visibles?.length === 0 && (
               <tr>
                 <Td colSpan={7} className="py-10 text-center text-muted-foreground">
                   Todavía no hay routers. Crea el primero con «Nuevo router».
                 </Td>
               </tr>
             )}
-            {lista?.map((r) => (
+            {visibles?.map((r) => (
               <tr key={r.id}>
                 <Td>
                   <div className="whitespace-nowrap font-medium">{r.nombre}</div>

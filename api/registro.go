@@ -237,13 +237,19 @@ func (a *App) listarAutenticaciones(w http.ResponseWriter, r *http.Request, _ *O
 		return malo("Filtro de resultado no válido.")
 	}
 	buscar := strings.TrimSpace(q.Get("buscar"))
+	// 0 = todos los routers.
+	router, _ := strconv.Atoi(q.Get("router"))
+	if router < 0 {
+		router = 0
+	}
 	const filtro = `($1 = '' OR resultado = $1)
 		AND ($2 = '' OR usuario ILIKE '%' || $2 || '%' OR router_nombre ILIKE '%' || $2 || '%'
-		     OR empresa_nombre ILIKE '%' || $2 || '%' OR ip_origen LIKE $2 || '%')`
+		     OR empresa_nombre ILIKE '%' || $2 || '%' OR ip_origen LIKE $2 || '%')
+		AND ($3 = 0 OR router_id = $3)`
 
 	ctx := r.Context()
 	var total int
-	if err := a.db.QueryRow(ctx, `SELECT count(*) FROM autenticaciones WHERE `+filtro, resultado, buscar).
+	if err := a.db.QueryRow(ctx, `SELECT count(*) FROM autenticaciones WHERE `+filtro, resultado, buscar, router).
 		Scan(&total); err != nil {
 		return err
 	}
@@ -258,8 +264,8 @@ func (a *App) listarAutenticaciones(w http.ResponseWriter, r *http.Request, _ *O
 
 	filas, err := a.db.Query(ctx, `SELECT id, fecha, resultado, usuario, ip_origen, router_id,
 		router_nombre, empresa_nombre, nas_identifier, nas_ip, origen, metodo, grupo, motivo
-		FROM autenticaciones WHERE `+filtro+` ORDER BY id DESC LIMIT $3 OFFSET $4`,
-		resultado, buscar, tamano, (pagina-1)*tamano)
+		FROM autenticaciones WHERE `+filtro+` ORDER BY id DESC LIMIT $4 OFFSET $5`,
+		resultado, buscar, router, tamano, (pagina-1)*tamano)
 	if err != nil {
 		return err
 	}
