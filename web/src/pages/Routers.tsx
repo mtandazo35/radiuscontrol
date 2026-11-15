@@ -183,9 +183,9 @@ export default function Routers() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <p className="text-sm text-muted-foreground">
+      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+        <div className="min-w-0 flex-1 basis-80">
+          <p className="max-w-4xl text-sm text-muted-foreground">
             Cada router se identifica por la dirección de origen de sus paquetes y tiene su propio secreto. El firewall del servidor solo deja pasar al puerto RADIUS las redes de los routers activos.
           </p>
         </div>

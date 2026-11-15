@@ -124,9 +124,9 @@ export default function Usuarios() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <p className="text-sm text-muted-foreground">
+      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+        <div className="min-w-0 flex-1 basis-80">
+          <p className="max-w-4xl text-sm text-muted-foreground">
             Personas que entran a los routers por WinBox, SSH o WebFig. El grupo debe existir en cada router.
           </p>
         </div>
