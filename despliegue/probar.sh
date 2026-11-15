@@ -1021,8 +1021,11 @@ done
 
 api GET /api/servidor/accesos
 PUERTO_SSH="$(printf '%s' "$CUERPO" | jq -r '.puerto_ssh' 2>/dev/null)"
-comprobar "Accesos al servidor: el panel ve el puerto de SSH, tu dirección y las reglas cargadas a mano del panel y del SSH, 200" \
-    "$(codigo_es 200 && printf '%s' "$CUERPO" | jq -e --arg ip "$IP_PRUEBA" '(.puerto_ssh | type == "number") and .puerto_ssh >= 1 and .puerto_ssh <= 65535 and .tu_ip == $ip and (.gestionadas | type == "array") and any(.ajenas[]; .servicio == "panel") and any(.ajenas[]; .servicio == "ssh") and (.firewall.estado | type == "string") and (.firewall.ufw_activo | type == "boolean") and (.firewall.desde | type == "string")' >/dev/null; echo $?)" \
+# Las reglas reales del servidor pueden estar cargadas a mano o ya gestionadas
+# desde el panel: en cualquiera de los dos casos, el panel debe ver al menos una
+# del panel y una del SSH.
+comprobar "Accesos al servidor: el panel ve el puerto de SSH, tu dirección y las reglas reales del panel y del SSH, 200" \
+    "$(codigo_es 200 && printf '%s' "$CUERPO" | jq -e --arg ip "$IP_PRUEBA" '(.puerto_ssh | type == "number") and .puerto_ssh >= 1 and .puerto_ssh <= 65535 and .tu_ip == $ip and (.ajenas | type == "array") and any((.gestionadas + .ajenas)[]; .servicio == "panel") and any((.gestionadas + .ajenas)[]; .servicio == "ssh") and (.firewall.estado | type == "string") and (.firewall.ufw_activo | type == "boolean") and (.firewall.desde | type == "string")' >/dev/null; echo $?)" \
     "$(printf '%s' "$CUERPO" | jq -c '{puerto_ssh, tu_ip, gestionadas, ajenas, firewall}' 2>/dev/null)"
 
 # La sección solo sigue si puede asegurar que no tocará nada ajeno: el puerto
