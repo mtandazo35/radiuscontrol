@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Check, CircleAlert, Clock, Eye, EyeOff, KeyRound, LoaderCircle, Lock, Moon, Sun, User } from "lucide-react";
+import { Check, CircleAlert, Clock, Eye, EyeOff, KeyRound, LoaderCircle, Lock, Moon, ShieldCheck, Sun, User } from "lucide-react";
 import { Button, Input, Label } from "@/components/ui";
 import { api, ErrorApi, type Operador } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -19,16 +19,25 @@ const fases: Record<Fase, { termino: string; texto: string }> = {
 };
 
 // Colores del panel del diagrama: fijos, no dependen del tema claro u oscuro.
-// Todos son colores planos: sin degradados ni transparencias.
 const tinta = {
-  fondo: "#111827",
-  trazo: "#334155",
-  anillos: ["#1F2937", "#182233", "#141C2B"],
-  linea: "#60A5FA",
+  nodo: "#0F1B3D",
+  trazo: "#5B7BB5",
+  disco: "rgba(96, 165, 250, 0.13)",
+  borde: "rgba(147, 197, 253, 0.38)",
+  linea: "#93C5FD",
   texto: "#F8FAFC",
-  tenue: "#94A3B8",
-  aceptado: "#10B981",
-  rechazado: "#EF4444",
+  tenue: "#B6C6E3",
+  aceptado: "#34D399",
+  rechazado: "#F87171",
+};
+
+// Azul profundo con una trama de puntos: se distingue de la columna del
+// formulario tanto en el tema claro como en el oscuro.
+const fondoPanel = {
+  backgroundColor: "#0F1B3D",
+  backgroundImage:
+    "radial-gradient(rgba(147, 197, 253, 0.14) 1px, transparent 1px), linear-gradient(155deg, #1E3A8A 0%, #152A63 38%, #0B1228 100%)",
+  backgroundSize: "22px 22px, 100% 100%",
 };
 
 function Diagrama({ fase }: { fase: Fase }) {
@@ -39,38 +48,32 @@ function Diagrama({ fase }: { fase: Fase }) {
   const f = fases[fase];
 
   return (
-    <div className="w-full max-w-xl">
+    <div className="w-full max-w-2xl">
       {/* Un solo dibujo a escala: los rótulos van fuera de los anillos y nada
           se sale del panel, tampoco en un teléfono. */}
-      <svg viewBox="0 0 480 270" className="block w-full" role="img" aria-label="Tu navegador pide acceso a RadiusControl">
+      <svg viewBox="0 0 480 312" className="block w-full" role="img" aria-label="Tu navegador pide acceso a RadiusControl">
         {/* Los discos son el «radio»: el alcance del servidor. */}
-        {[104, 72, 40].map((r, i) => (
-          <circle key={r} cx={352} cy={116} r={r} fill={tinta.anillos[2 - i]} />
+        {[136, 94, 52].map((r) => (
+          <circle key={r} cx={332} cy={144} r={r} fill={tinta.disco} stroke={tinta.borde} strokeWidth={1} />
         ))}
-        <line x1={28} y1={116} x2={352} y2={116} stroke={tinta.trazo} strokeWidth={2} />
+        <line x1={28} y1={144} x2={332} y2={144} stroke={tinta.trazo} strokeWidth={2} strokeDasharray="2 7" strokeLinecap="round" />
 
-        <circle cx={28} cy={116} r={11} fill={tinta.fondo} stroke={tinta.linea} strokeWidth={2} />
-        <circle
-          cx={352}
-          cy={116}
-          r={11}
-          fill={color}
-          className="transition-[fill] duration-700 motion-reduce:transition-none"
-        />
+        <circle cx={28} cy={144} r={12} fill={tinta.nodo} stroke={tinta.linea} strokeWidth={2} />
+        <circle cx={332} cy={144} r={13} fill={color} className="transition-[fill] duration-700 motion-reduce:transition-none" />
         {/* La petición: en reposo descansa dentro del nodo del navegador. */}
         <circle
           cx={28}
-          cy={116}
+          cy={144}
           r={6}
           fill={color}
           className="transition-[transform,fill] duration-700 ease-out motion-reduce:transition-none"
-          style={{ transform: `translateX(${(posicion / 100) * 324}px)` }}
+          style={{ transform: `translateX(${(posicion / 100) * 304}px)` }}
         />
 
-        <text x={12} y={152} fontSize={15} fill={tinta.tenue} >
+        <text x={10} y={182} fontSize={15} fontWeight={500} fill={tinta.tenue}>
           Tu navegador
         </text>
-        <text x={352} y={250} fontSize={15} fill={tinta.tenue} textAnchor="middle" >
+        <text x={332} y={304} fontSize={15} fontWeight={500} fill={tinta.tenue} textAnchor="middle">
           RadiusControl
         </text>
       </svg>
@@ -145,9 +148,19 @@ export default function Login() {
     <div className="grid min-h-screen lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
       <section
         className="flex flex-col justify-between gap-8 px-6 py-8 sm:px-10 lg:px-14 lg:py-12"
-        style={{ backgroundColor: tinta.fondo, color: tinta.texto }}
+        style={{ ...fondoPanel, color: tinta.texto }}
       >
-        <p className="text-xl font-semibold tracking-tight">RadiusControl</p>
+        <div className="flex items-center gap-3">
+          <span className="flex size-10 items-center justify-center rounded-lg" style={{ backgroundColor: "#2563EB" }}>
+            <ShieldCheck className="size-5" aria-hidden="true" />
+          </span>
+          <div className="leading-tight">
+            <p className="text-xl font-semibold tracking-tight">RadiusControl</p>
+            <p className="text-sm" style={{ color: tinta.tenue }}>
+              FreeRADIUS • AAA
+            </p>
+          </div>
+        </div>
 
         <div className="flex flex-1 items-center py-6 lg:py-0">
           <Diagrama fase={fase} />
@@ -158,7 +171,7 @@ export default function Login() {
         </p>
       </section>
 
-      <main className="flex flex-col items-center bg-gradient-to-br from-[#D5E1F5] via-[#EAF0F9] to-[#F8FAFC] dark:from-[#131C2E] dark:via-[#0C111C] dark:to-[#090D16] justify-between gap-8 px-6 py-6 sm:px-10 lg:px-16 lg:py-8">
+      <main className="flex flex-col items-center bg-gradient-to-br from-[#DCE7F8] via-[#EEF3FA] to-[#F8FAFC] dark:from-[#0F172A] dark:via-[#0B101A] dark:to-[#090D16] justify-between gap-8 px-6 py-6 sm:px-10 lg:px-16 lg:py-8">
         <div className="flex w-full justify-end">
           <button
             type="button"
@@ -172,7 +185,7 @@ export default function Login() {
         </div>
 
         <div className="w-full max-w-md">
-          <div className="rounded-xl border border-t-4 border-t-primary bg-card p-6 sm:p-9">
+          <div className="rounded-xl border border-t-4 border-t-primary bg-card p-6 shadow-xl shadow-slate-900/10 dark:shadow-black/40 sm:p-9">
             <h1 className="text-4xl font-semibold leading-none tracking-tight">Entrar al panel</h1>
             <p className="mt-3 text-lg text-muted-foreground">Usa tu cuenta de operador.</p>
 

@@ -355,6 +355,7 @@ func (a *App) rutas() http.Handler {
 	m.HandleFunc("POST /api/usuarios/{id}/clave", cambia(a.cambiarClaveUsuario))
 
 	m.HandleFunc("GET /api/estado", a.privado(a.verEstado))
+	m.HandleFunc("GET /api/resumen", a.privado(a.verResumen))
 	m.HandleFunc("POST /api/aplicar", a.admin(a.aplicar))
 
 	// Acceso y seguridad del panel.

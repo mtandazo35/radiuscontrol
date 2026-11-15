@@ -1,4 +1,4 @@
-import { ListChecks, Lock, Moon, RefreshCw, Router as IconoRouter, Settings2, ShieldCheck, Sun, Users } from "lucide-react";
+import { LayoutDashboard, ListChecks, Lock, Moon, RefreshCw, Router as IconoRouter, Settings2, ShieldCheck, Sun, Users } from "lucide-react";
 import * as React from "react";
 import { Navigate, NavLink, Route, Routes, useLocation } from "react-router-dom";
 import { ProveedorActualizacion, useActualizacion, versionCorta } from "@/components/Actualizacion";
@@ -10,6 +10,7 @@ import { useApp } from "./contexto";
 import { ProveedorFiltro, useFiltro } from "./filtro";
 import Autenticaciones from "./pages/Autenticaciones";
 import Configuracion from "./pages/Configuracion";
+import Inicio from "./pages/Inicio";
 import Login from "./pages/Login";
 import Routers from "./pages/Routers";
 import Seguridad from "./pages/Seguridad";
@@ -18,7 +19,13 @@ import { VERSION } from "./version";
 
 // Menú agrupado: lo que se mira a diario, lo que se administra y el propio sistema.
 const grupos = [
-  { titulo: "Operación", secciones: [{ ruta: "/autenticaciones", texto: "Autenticaciones", icono: ListChecks }] },
+  {
+    titulo: "Operación",
+    secciones: [
+      { ruta: "/inicio", texto: "Inicio", icono: LayoutDashboard },
+      { ruta: "/autenticaciones", texto: "Autenticaciones", icono: ListChecks },
+    ],
+  },
   {
     titulo: "Gestión AAA",
     secciones: [
@@ -163,7 +170,7 @@ function SelectorRouter() {
   return (
     <select
       aria-label="Filtrar por router"
-      title="Filtra Routers y Autenticaciones"
+      title="Filtra Inicio, Routers y Autenticaciones"
       className="h-9 max-w-[11rem] rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:max-w-[16rem]"
       value={routerId ?? ""}
       onFocus={recargarRouters}
@@ -264,12 +271,13 @@ export default function App() {
       <ProveedorFiltro>
       <Marco>
         <Routes>
+          <Route path="/inicio" element={<Inicio />} />
           <Route path="/routers" element={<Routers />} />
           <Route path="/usuarios" element={<Usuarios />} />
           <Route path="/autenticaciones" element={<Autenticaciones />} />
           <Route path="/configuracion" element={<Configuracion />} />
           <Route path="/seguridad" element={<Seguridad />} />
-          <Route path="*" element={<Navigate to="/routers" replace />} />
+          <Route path="*" element={<Navigate to="/inicio" replace />} />
         </Routes>
       </Marco>
       </ProveedorFiltro>

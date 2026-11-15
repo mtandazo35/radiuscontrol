@@ -295,6 +295,14 @@ comprobar "Registro: el filtro por router solo devuelve logins de ese router" \
 api GET "/api/autenticaciones?router=999999999"
 comprobar "Registro: el filtro por un router que no existe no devuelve nada" \
     "$([ "$(printf '%s' "$CUERPO" | jq '.total')" -eq 0 ]; echo $?)"
+api GET "/api/resumen"
+comprobar "Inicio: el resumen cuenta los logins, la serie y el router de prueba" \
+    "$(codigo_es 200 && printf '%s' "$CUERPO" | jq -e '.aceptados_24h > 0 and .rechazados_24h > 0 and (.serie | length) > 0 and .routers_total >= 1 and any(.routers[]; .nombre == "prueba-automatica" and .aceptados > 0 and .redes >= 1 and .ultimo != null) and (.rechazados | length) > 0 and .bloqueos_ip != null' >/dev/null; echo $?)" \
+    "$(printf '%s' "$CUERPO" | jq -c '{aceptados_24h, rechazados_24h, routers_total, routers_activos, tramos: (.serie | length)}')"
+api GET "/api/resumen?router=$RID"
+comprobar "Inicio: el resumen filtrado por router solo trae ese router" \
+    "$(printf '%s' "$CUERPO" | jq -e --argjson r "$RID" '(.routers | length) == 1 and .routers[0].id == $r and .aceptados_24h > 0' >/dev/null; echo $?)" \
+    "$(printf '%s' "$CUERPO" | jq -c '{aceptados_24h, routers: [.routers[].nombre]}')"
 api GET "/api/autenticaciones?buscar=$USUARIO_PRUEBA&tamano=2&pagina=1"
 A1="$CUERPO"
 api GET "/api/autenticaciones?buscar=$USUARIO_PRUEBA&tamano=2&pagina=2"
