@@ -8,6 +8,7 @@
     "build": "tsc --noEmit && vite build"
   },
   "dependencies": {
+    "@fontsource/barlow-semi-condensed": "^5.1.0",
     "@radix-ui/react-dialog": "^1.1.2",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",

@@ -19,6 +19,10 @@ export default {
         success: "hsl(var(--success))",
         warning: "hsl(var(--warning))",
       },
+      fontFamily: {
+        // Títulos y rótulos. Se sirve desde el propio panel (ver main.tsx).
+        titulo: ['"Barlow Semi Condensed"', "ui-sans-serif", "system-ui", '"Segoe UI"', "sans-serif"],
+      },
       borderRadius: { lg: "var(--radius)", md: "calc(var(--radius) - 2px)", sm: "calc(var(--radius) - 4px)" },
     },
   },
