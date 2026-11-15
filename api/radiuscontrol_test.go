@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/base64"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -332,6 +333,73 @@ func TestRenderizarAccesosPorRouter(t *testing.T) {
 	want := "# Generado por RadiusControl. Redes con acceso a 1812/udp.\n192.0.2.10/32\n192.0.2.11/32\n198.51.100.8/29\n# fin\n"
 	if got := string(listaRedes(a.Clients)); got != want {
 		t.Fatalf("lista de redes inesperada:\n%s", got)
+	}
+}
+
+func TestPlanEmergencia(t *testing.T) {
+	casos := []struct {
+		dias int
+		plan []int
+	}{
+		{180, []int{90, 45, 22, 11, 7}},
+		{3650, []int{1825, 912, 456, 228, 114, 57, 28, 14, 7}},
+		{365, []int{182, 91, 45, 22, 11, 7}},
+		{14, []int{7}},
+		{10, []int{7}},
+		{8, []int{7}},
+		{7, nil},
+		{3, nil},
+	}
+	for _, c := range casos {
+		got := planEmergencia(c.dias)
+		if !slices.Equal(got, c.plan) {
+			t.Errorf("%d días: %v, se esperaba %v", c.dias, got, c.plan)
+		}
+		for i, d := range got {
+			if d < minDiasAutenticaciones || d >= c.dias || (i > 0 && d >= got[i-1]) {
+				t.Errorf("%d días: el plan %v baja del mínimo o repite una retención", c.dias, got)
+			}
+		}
+	}
+}
+
+func TestValidarAjustesPurga(t *testing.T) {
+	if err := ajustesPurgaPorOmision().validar(); err != nil {
+		t.Fatalf("los ajustes por omisión deben ser válidos: %v", err)
+	}
+	if aj := ajustesPurgaPorOmision(); aj.DiasAutenticaciones != 180 || aj.DiasActividad != 365 ||
+		aj.CadaHoras != 24 || aj.PorcentajeDisco != 50 {
+		t.Fatalf("ajustes por omisión inesperados: %+v", aj)
+	}
+	campos := []struct {
+		nombre         string
+		campo          func(*AjustesPurga) *int
+		minimo, maximo int
+	}{
+		{"dias_autenticaciones", func(a *AjustesPurga) *int { return &a.DiasAutenticaciones }, 7, 3650},
+		{"dias_actividad", func(a *AjustesPurga) *int { return &a.DiasActividad }, 30, 3650},
+		{"cada_horas", func(a *AjustesPurga) *int { return &a.CadaHoras }, 1, 720},
+		{"porcentaje_disco", func(a *AjustesPurga) *int { return &a.PorcentajeDisco }, 20, 95},
+	}
+	for _, c := range campos {
+		for _, v := range []int{c.minimo, c.maximo} {
+			aj := ajustesPurgaPorOmision()
+			*c.campo(&aj) = v
+			if err := aj.validar(); err != nil {
+				t.Errorf("%s = %d debía aceptarse: %v", c.nombre, v, err)
+			}
+		}
+		for _, v := range []int{c.minimo - 1, c.maximo + 1, 0, -1} {
+			aj := ajustesPurgaPorOmision()
+			*c.campo(&aj) = v
+			if aj.validar() == nil {
+				t.Errorf("%s = %d debía rechazarse", c.nombre, v)
+			}
+		}
+	}
+	// Un cuerpo vacío deja todos los campos a cero y no debe aceptarse.
+	if (AjustesPurga{}).validar() == nil {
+		t.Error("unos ajustes vacíos debían rechazarse")
 	}
 }
 

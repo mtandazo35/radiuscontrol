@@ -107,6 +107,14 @@ hacer_respaldo() {
 
 migraciones() { sql -c "SELECT count(*) FROM migraciones_aplicadas" 2>/dev/null || echo "?"; }
 
+# Cada construcción deja imágenes sin usar y caché; sin esto acaban llenando el
+# disco. Se conserva algo de caché para que la siguiente construcción sea rápida.
+limpiar_docker() {
+    docker image prune -f >/dev/null 2>&1 || true
+    docker builder prune -f --keep-storage 1500MB >/dev/null 2>&1 \
+        || docker builder prune -f --filter until=24h >/dev/null 2>&1 || true
+}
+
 # ------------------------------------------------------------------ instalar
 levantar() {
     compose build >/tmp/rc-build.log 2>&1 || return 1
@@ -213,6 +221,7 @@ actualizar() {
     avance en-curso comprobar ""
     if comprobar_salud; then
         avance ok comprobar "Actualizado. Respaldo previo en $RESPALDO"
+        limpiar_docker
         anotar_actividad sistema.actualizada "$(jq -n --arg de "${P_DE:0:7}" --arg a "${P_A:0:7}" '{de: $de, a: $a}')"
         buscar
         # El propio agente pudo cambiar: se reinicia solo, fuera de este proceso.

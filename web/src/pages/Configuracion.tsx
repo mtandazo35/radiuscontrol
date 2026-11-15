@@ -1,5 +1,6 @@
 import * as React from "react";
 import { useActualizacion, versionCorta } from "@/components/Actualizacion";
+import { Limpieza } from "@/components/Limpieza";
 import { Badge, Button, Card } from "@/components/ui";
 import { fecha, huellaCorta } from "@/lib/utils";
 import { useApp } from "../contexto";
@@ -195,6 +196,8 @@ export default function Configuracion() {
           </dl>
         </Card>
       </div>
+
+      {operador?.rol === "administrador" && <Limpieza />}
     </div>
   );
 }

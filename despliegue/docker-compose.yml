@@ -1,9 +1,17 @@
 name: radiuscontrol
 
+# Límite común para el registro de cada contenedor: sin él crece sin tope.
+x-registro: &registro
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   postgres:
     image: postgres:16
     restart: unless-stopped
+    logging: *registro
     environment:
       POSTGRES_DB: radiuscontrol
       POSTGRES_USER: radiuscontrol
@@ -24,6 +32,7 @@ services:
       dockerfile: despliegue/api.Dockerfile
     container_name: radiuscontrol-api
     restart: unless-stopped
+    logging: *registro
     depends_on:
       postgres:
         condition: service_healthy
@@ -47,6 +56,7 @@ services:
       dockerfile: despliegue/freeradius/Dockerfile
     container_name: radiuscontrol-freeradius
     restart: unless-stopped
+    logging: *registro
     # Red del host: FreeRADIUS debe ver la IP de origen real de cada router.
     network_mode: host
     volumes:
@@ -59,6 +69,7 @@ services:
       dockerfile: despliegue/web.Dockerfile
     container_name: radiuscontrol-web
     restart: unless-stopped
+    logging: *registro
     # Red del host: así el firewall del equipo decide quién llega al 443.
     network_mode: host
     environment:

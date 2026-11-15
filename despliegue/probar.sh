@@ -29,6 +29,9 @@ IP_PUBLICA="$(ip -4 route get 192.0.2.1 | awk '{for (i = 1; i <= NF; i++) if ($i
 ROUTER_PRUEBA="prueba-automatica"
 USUARIO_PRUEBA="prueba-automatica"
 OPERADOR_PRUEBA="operador-prueba-automatica"
+# Marcadores de las filas que inserta la sección de la purga de registros.
+MARCA_ANTIGUA="prueba-automatica-antigua"
+MARCA_RECIENTE="prueba-automatica-reciente"
 
 # totp <secreto en base32>: código de 6 cifras del periodo actual (RFC 6238).
 totp() {
@@ -537,6 +540,10 @@ comprobar "Accesos: el router de prueba vuelve a quedar suspendido" "$(printf '%
 
 # ---------------------------------------------------------------- acceso y seguridad del panel
 COOKIE_ADMIN="$COOKIE"
+# Los ajustes de la purga tal como están: la cuenta de solo lectura intentará
+# guardar estos mismos, así que si el control fallara no cambiaría nada.
+api GET /api/purga
+AJUSTES_PURGA="$(printf '%s' "$CUERPO" | jq -c '.ajustes' 2>/dev/null)"
 api GET /api/operadores
 for id in $(printf '%s' "$CUERPO" | jq -r ".[] | select(.usuario == \"$OPERADOR_PRUEBA\") | .id"); do
     api DELETE "/api/operadores/$id"
@@ -565,6 +572,12 @@ api GET /api/auditoria
 comprobar "Seguridad: la cuenta de solo lectura no ve el registro de actividad, 403" "$(codigo_es 403; echo $?)"
 api POST /api/actualizacion/aplicar '{"commit":"0123456789abcdef0123456789abcdef01234567"}'
 comprobar "Seguridad: la cuenta de solo lectura no puede lanzar una actualización, 403" "$(codigo_es 403; echo $?)"
+api GET /api/purga
+comprobar "Seguridad: la cuenta de solo lectura no ve la purga de registros, 403" "$(codigo_es 403; echo $?)"
+api PUT /api/purga "$AJUSTES_PURGA"
+comprobar "Seguridad: la cuenta de solo lectura no puede cambiar los ajustes de la purga, 403" "$(codigo_es 403; echo $?)" "$CUERPO"
+api POST /api/purga/ejecutar '{}'
+comprobar "Seguridad: la cuenta de solo lectura no puede ejecutar una purga, 403" "$(codigo_es 403; echo $?)" "$CUERPO"
 
 api POST /api/cuenta/clave "$(jq -n --arg n "otra-clave-larga-1" '{actual:"equivocada",nueva:$n}')"
 comprobar "Cuenta: cambiar la contraseña con la actual equivocada se rechaza, 400" "$(codigo_es 400; echo $?)"
@@ -794,6 +807,84 @@ comprobar "Bloqueo por IP: la dirección que anota el panel es la real, no la qu
     "$(printf '%s' "$CUERPO" | jq -c '[.eventos[] | {ip, accion}][0]')"
 docker exec radiuscontrol-api radiuscontrol desbloquear-ip "$IP_PUBLICA" >/dev/null
 
+# ---------------------------------------------------------------- purga de registros
+# El servidor tiene datos reales. Por eso los ajustes no se cambian (se vuelven
+# a guardar los mismos), los valores que deben rechazarse pecan siempre por
+# exceso (si alguno se aceptara por error, conservaría más, nunca menos) y la
+# purga de emergencia por disco no se prueba. Lo que se borra son filas propias,
+# con marcador y con fecha de hace 4000 días.
+# cuenta_marca <marcador>: «<filas en autenticaciones> <filas en auditoria>»
+cuenta_marca() { sql "SELECT (SELECT count(*) FROM autenticaciones WHERE usuario = '$1') || ' ' || (SELECT count(*) FROM auditoria WHERE operador = '$1')"; }
+quitar_marcas() { sql "DELETE FROM autenticaciones WHERE usuario IN ('$MARCA_ANTIGUA', '$MARCA_RECIENTE'); DELETE FROM auditoria WHERE operador IN ('$MARCA_ANTIGUA', '$MARCA_RECIENTE')" >/dev/null; }
+quitar_marcas
+
+api GET /api/purga
+comprobar "Purga: el panel ve los ajustes, el uso del disco y lo que hay guardado, 200" \
+    "$(codigo_es 200 && printf '%s' "$CUERPO" | jq -e '.disco.porcentaje >= 1 and .disco.porcentaje <= 100 and .disco.total_bytes > 0 and (.disco.libre_bytes | type == "number") and (.ajustes | [.dias_autenticaciones, .dias_actividad, .cada_horas, .porcentaje_disco] | all(type == "number")) and (.filas | [.autenticaciones, .actividad] | all(type == "number")) and (.mas_antiguo | has("autenticaciones") and has("actividad")) and (.ultimas | type == "array")' >/dev/null; echo $?)" \
+    "$(printf '%s' "$CUERPO" | jq -c '{ajustes, disco, filas, mas_antiguo}' 2>/dev/null)"
+AJUSTES="$(printf '%s' "$CUERPO" | jq -cS '.ajustes' 2>/dev/null)"
+# ajustes_iguales: los ajustes del servidor son los que había al empezar
+ajustes_iguales() {
+    api GET /api/purga
+    [ -n "$AJUSTES" ] && [ "$AJUSTES" != "null" ] && [ "$(printf '%s' "$CUERPO" | jq -cS '.ajustes' 2>/dev/null)" = "$AJUSTES" ]
+}
+
+for cambio in '.dias_autenticaciones = 3651' '.dias_actividad = 3651' '.cada_horas = 721' '.porcentaje_disco = 96'; do
+    api PUT /api/purga "$(printf '%s' "$AJUSTES" | jq -c "$cambio" 2>/dev/null)"
+    RECHAZADO="$CODIGO"
+    DETALLE="$CUERPO"
+    ajustes_iguales
+    IGUALES=$?
+    comprobar "Purga: un valor fuera de rango ($cambio) se rechaza y no cambia los ajustes, 400" \
+        "$([ "$RECHAZADO" = 400 ] && [ "$IGUALES" -eq 0 ]; echo $?)" "$DETALLE"
+done
+
+if [ -n "$AJUSTES" ] && [ "$AJUSTES" != "null" ]; then
+    api PUT /api/purga "$AJUSTES"
+    comprobar "Purga: volver a guardar los mismos ajustes responde con el estado completo, 200" \
+        "$(codigo_es 200 && [ "$(printf '%s' "$CUERPO" | jq -cS '.ajustes')" = "$AJUSTES" ] && printf '%s' "$CUERPO" | jq -e '.disco.porcentaje >= 1 and (.ultimas | type == "array")' >/dev/null; echo $?)" \
+        "$(printf '%s' "$CUERPO" | jq -c '.ajustes' 2>/dev/null)"
+else
+    comprobar "Purga: volver a guardar los mismos ajustes responde con el estado completo, 200" 1 "no se pudieron leer los ajustes"
+fi
+api GET "/api/auditoria?buscar=sistema.purga_ajustada&tamano=5"
+comprobar "Purga: guardar los ajustes queda en el registro de actividad" \
+    "$(printf '%s' "$CUERPO" | jq -e --arg o "$ADMIN_PRUEBA" 'any(.eventos[]; .accion == "sistema.purga_ajustada" and .operador == $o and .objeto == "purga" and (.detalle | contains("dias_autenticaciones")))' >/dev/null; echo $?)" \
+    "$(printf '%s' "$CUERPO" | jq -c '[.eventos[] | select(.accion == "sistema.purga_ajustada")][0] | {operador, accion, objeto, detalle}' 2>/dev/null)"
+
+# La limpieza solo se ejecuta si los ajustes siguen siendo los del servidor.
+if ajustes_iguales; then
+    sql "INSERT INTO autenticaciones (fecha, resultado, usuario, ip_origen) VALUES (now() - interval '4000 days', 'rechazado', '$MARCA_ANTIGUA', '$IP_PRUEBA'), (now(), 'rechazado', '$MARCA_RECIENTE', '$IP_PRUEBA'); INSERT INTO auditoria (fecha, operador, ip, accion, objeto) VALUES (now() - interval '4000 days', '$MARCA_ANTIGUA', '$IP_PRUEBA', 'prueba.purga', 'prueba'), (now(), '$MARCA_RECIENTE', '$IP_PRUEBA', 'prueba.purga', 'prueba')" >/dev/null
+    comprobar "Purga: filas de prueba insertadas, una antiquísima y una reciente en cada tabla" \
+        "$([ "$(cuenta_marca "$MARCA_ANTIGUA")" = "1 1" ] && [ "$(cuenta_marca "$MARCA_RECIENTE")" = "1 1" ]; echo $?)"
+    api POST /api/purga/ejecutar '{}'
+    PURGA="$CUERPO"
+    comprobar "Purga: ejecutar una limpieza a mano responde con lo que borró de cada tabla, 200" \
+        "$(codigo_es 200 && printf '%s' "$PURGA" | jq -e --arg o "$ADMIN_PRUEBA" '.purga.motivo == "manual" and .purga.operador == $o and .purga.autenticaciones >= 1 and .purga.actividad >= 1 and (.purga.disco_antes | type == "number") and (.purga.disco_despues | type == "number")' >/dev/null; echo $?)" "$PURGA"
+    PURGA_ID="$(printf '%s' "$PURGA" | jq -r '.purga.id' 2>/dev/null)"
+    comprobar "Purga: las filas más antiguas que la retención ya no están" \
+        "$([ "$(cuenta_marca "$MARCA_ANTIGUA")" = "0 0" ]; echo $?)"
+    comprobar "Purga: las filas recientes siguen en su sitio" \
+        "$([ "$(cuenta_marca "$MARCA_RECIENTE")" = "1 1" ]; echo $?)"
+    api GET /api/purga
+    comprobar "Purga: la limpieza aparece entre las últimas con el motivo manual" \
+        "$(printf '%s' "$CUERPO" | jq -e --arg id "$PURGA_ID" '(.ultimas | length) <= 10 and any(.ultimas[]; (.id | tostring) == $id and .motivo == "manual")' >/dev/null; echo $?)" \
+        "$(printf '%s' "$CUERPO" | jq -c --arg id "$PURGA_ID" '[.ultimas[] | select((.id | tostring) == $id)][0]' 2>/dev/null)"
+    api GET "/api/auditoria?buscar=sistema.purga&tamano=20"
+    comprobar "Purga: la limpieza queda en el registro de actividad y no se borra a sí misma" \
+        "$(printf '%s' "$CUERPO" | jq -e --arg o "$ADMIN_PRUEBA" 'any(.eventos[]; .accion == "sistema.purga" and .operador == $o and .objeto == "manual" and (.detalle | contains("autenticaciones")))' >/dev/null; echo $?)" \
+        "$(printf '%s' "$CUERPO" | jq -c '[.eventos[] | select(.accion == "sistema.purga" and .objeto == "manual")][0] | {operador, ip, accion, objeto, detalle}' 2>/dev/null)"
+else
+    comprobar "Purga: los ajustes siguen como estaban, condición para ejecutar la limpieza" 1 "$CUERPO"
+fi
+
+# Se retira lo que ha puesto esta sección. Los eventos del registro de
+# actividad se borran con los demás en la limpieza final.
+quitar_marcas
+sql "DELETE FROM purgas WHERE operador = '$ADMIN_PRUEBA'" >/dev/null
+comprobar "Purga: datos propios de la sección retirados" \
+    "$([ "$(cuenta_marca "$MARCA_ANTIGUA")" = "0 0" ] && [ "$(cuenta_marca "$MARCA_RECIENTE")" = "0 0" ] && [ "$(sql "SELECT count(*) FROM purgas WHERE operador = '$ADMIN_PRUEBA'")" = 0 ]; echo $?)"
+
 # ---------------------------------------------------------------- actualizaciones
 api POST /api/actualizacion/buscar '{}'
 comprobar "Actualización: pedir una búsqueda, 202" "$(codigo_es 202; echo $?)"
@@ -837,7 +928,7 @@ aplicar
 comprobar "Limpieza: datos de prueba borrados y configuración aplicada" "$?"
 docker exec "$RADIUS" rm -f /tmp/secreto /tmp/secreto-malo /tmp/secreto-raro /tmp/secreto-b
 api DELETE /api/sesion
-docker compose exec -T postgres psql -q -U radiuscontrol -d radiuscontrol -c     "DELETE FROM autenticaciones WHERE router_nombre LIKE '$ROUTER_PRUEBA%' OR usuario LIKE '$USUARIO_PRUEBA%' OR usuario IN ('no-existe', 'DEFAULT'); DELETE FROM operadores WHERE usuario = '$ADMIN_PRUEBA'; DELETE FROM intentos_ip WHERE ip IN ('$IP_PRUEBA', '$IP_ATACANTE', '$IP_PUBLICA') OR ip LIKE '192.0.2.2%'; DELETE FROM auditoria WHERE ip LIKE '192.0.2.2%' OR operador IN ('operador-bloqueo-automatica', 'operador-sesiones-automatica') OR objeto IN ('operador-bloqueo-automatica', 'operador-sesiones-automatica', 'todas las demás'); DELETE FROM auditoria WHERE operador IN ('$OPERADOR_PRUEBA', '$ADMIN_PRUEBA', 'prueba-direccion-fingida', 'usuario-que-no-existe') OR ip IN ('$IP_PRUEBA', '$IP_ATACANTE') OR objeto IN ('$IP_ATACANTE', '$IP_PRUEBA') OR objeto = '$ADMIN_PRUEBA' OR objeto IN ('$OPERADOR_PRUEBA', 'Empresa de prueba') OR objeto LIKE '$ROUTER_PRUEBA%' OR objeto LIKE '$USUARIO_PRUEBA%' OR (accion = 'accesos.cambio_masivo' AND operador = '$ADMIN_PRUEBA'); DELETE FROM empresas e WHERE e.nombre IN ('Empresa de prueba', '$EMPRESA_ACCESOS') AND NOT EXISTS (SELECT 1 FROM routers r WHERE r.empresa_id = e.id)" >/dev/null 2>&1
+docker compose exec -T postgres psql -q -U radiuscontrol -d radiuscontrol -c     "DELETE FROM autenticaciones WHERE router_nombre LIKE '$ROUTER_PRUEBA%' OR usuario LIKE '$USUARIO_PRUEBA%' OR usuario IN ('no-existe', 'DEFAULT', '$MARCA_ANTIGUA', '$MARCA_RECIENTE'); DELETE FROM purgas WHERE operador = '$ADMIN_PRUEBA'; DELETE FROM operadores WHERE usuario = '$ADMIN_PRUEBA'; DELETE FROM intentos_ip WHERE ip IN ('$IP_PRUEBA', '$IP_ATACANTE', '$IP_PUBLICA') OR ip LIKE '192.0.2.2%'; DELETE FROM auditoria WHERE ip LIKE '192.0.2.2%' OR operador IN ('operador-bloqueo-automatica', 'operador-sesiones-automatica') OR objeto IN ('operador-bloqueo-automatica', 'operador-sesiones-automatica', 'todas las demás'); DELETE FROM auditoria WHERE operador IN ('$OPERADOR_PRUEBA', '$ADMIN_PRUEBA', 'prueba-direccion-fingida', 'usuario-que-no-existe', '$MARCA_ANTIGUA', '$MARCA_RECIENTE') OR ip IN ('$IP_PRUEBA', '$IP_ATACANTE') OR objeto IN ('$IP_ATACANTE', '$IP_PRUEBA') OR objeto = '$ADMIN_PRUEBA' OR objeto IN ('$OPERADOR_PRUEBA', 'Empresa de prueba') OR objeto LIKE '$ROUTER_PRUEBA%' OR objeto LIKE '$USUARIO_PRUEBA%' OR (accion = 'accesos.cambio_masivo' AND operador = '$ADMIN_PRUEBA'); DELETE FROM empresas e WHERE e.nombre IN ('Empresa de prueba', '$EMPRESA_ACCESOS') AND NOT EXISTS (SELECT 1 FROM routers r WHERE r.empresa_id = e.id)" >/dev/null 2>&1
 
 anotar ""
 anotar "Evidencia: $EVIDENCIA"

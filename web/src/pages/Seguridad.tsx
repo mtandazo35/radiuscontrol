@@ -31,6 +31,8 @@ const nombreAccion: Record<string, string> = {
   "sistema.actualizada": "Actualización instalada",
   "sistema.actualizacion_fallida": "Actualización fallida",
   "sistema.actualizacion_revertida": "Actualización revertida",
+  "sistema.purga": "Limpieza de registros",
+  "sistema.purga_ajustada": "Ajustes de limpieza cambiados",
   "ip.bloqueada": "Dirección IP bloqueada por intentos fallidos",
   "ip.desbloqueada": "Dirección IP desbloqueada",
   "router.creado": "Router creado",

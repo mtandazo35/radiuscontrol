@@ -4,7 +4,8 @@
 #
 # Variables opcionales:
 #   IP_PUBLICA    dirección por la que se llega al servidor (se detecta sola)
-#   RED_GESTION   red que puede abrir el panel; si se indica, se abre el 443 en UFW
+#   RED_GESTION   red que puede abrir el panel; solo si se indica se abre el 443.
+#                 Sin ella, el operador abre el panel con su propia regla.
 #   SERVICIOS     servicios de Compose a levantar (por omisión, todos)
 #
 # Es idempotente: no regenera secretos ni credenciales que ya existan.
@@ -97,27 +98,61 @@ docker compose up -d ${SERVICIOS:-}
 sleep 4
 docker compose ps
 
+# Imágenes sin usar y caché de construcciones anteriores: sin esto acaban
+# llenando el disco. Se conserva algo de caché para la siguiente construcción.
+docker image prune -f >/dev/null 2>&1 || true
+docker builder prune -f --keep-storage 1500MB >/dev/null 2>&1 \
+    || docker builder prune -f --filter until=24h >/dev/null 2>&1 || true
+
 echo "== 6. Firewall"
-if command -v ufw >/dev/null 2>&1; then
-    mkdir -p /root/backups
-    tar czf "/root/backups/ufw-antes-radiuscontrol-$(date +%Y%m%d-%H%M%S).tar.gz" /etc/ufw 2>/dev/null
-    if [ -n "${RED_GESTION:-}" ]; then
-        ufw allow from "$RED_GESTION" to any port 443 proto tcp comment 'Panel RadiusControl'
-    else
-        echo "sin RED_GESTION: no se cambia el acceso al panel"
-    fi
-    # Agente que abre 1812/udp solo a las redes de los routers aplicados.
-    install -m 0755 "$DIR/firewall/radiuscontrol-firewall.sh" /usr/local/sbin/radiuscontrol-firewall.sh
-    install -m 0644 "$DIR/firewall/radiuscontrol-firewall.service" /etc/systemd/system/radiuscontrol-firewall.service
-    systemctl daemon-reload
-    systemctl enable radiuscontrol-firewall.service >/dev/null 2>&1
-    systemctl restart radiuscontrol-firewall.service
-    sleep 4
-    systemctl is-active radiuscontrol-firewall.service
-    ufw status | grep -E '1812|Status'
-else
-    echo "UFW no está instalado: el agente de firewall no se instala"
+# El instalador no decide la seguridad del servidor: esas reglas las carga el
+# operador. Solo hace lo imprescindible para que RadiusControl funcione:
+#   - UFW instalado y activo, porque el puerto RADIUS (1812/udp) se abre y se
+#     cierra solo, únicamente para las redes de los routers dados de alta;
+#   - el SSH abierto para la conexión desde la que se está instalando, para que
+#     activar UFW no deje fuera a quien instala.
+# El panel (443) se abre solo si se indica RED_GESTION.
+FW_NUEVO=0
+if ! command -v ufw >/dev/null 2>&1; then
+    apt-get update -q
+    apt-get install -y -q ufw
 fi
+mkdir -p /root/backups
+tar czf "/root/backups/ufw-antes-radiuscontrol-$(date +%Y%m%d-%H%M%S).tar.gz" /etc/ufw 2>/dev/null || true
+if ufw status | grep -q '^Status: active'; then
+    echo "UFW ya estaba activo: no se toca ninguna regla existente"
+else
+    FW_NUEVO=1
+    # La regla de SSH va antes de activar: nunca al revés.
+    CONEXION="${SSH_CONNECTION:-}"
+    if [ -n "$CONEXION" ]; then
+        # SSH_CONNECTION: «IP del cliente, puerto del cliente, IP del servidor, puerto del servidor».
+        # shellcheck disable=SC2086
+        set -- $CONEXION
+        ufw allow from "$1" to any port "$4" proto tcp comment 'SSH de la instalacion'
+        echo "SSH abierto solo para $1 (puerto $4)"
+    else
+        # Sin sesión SSH (instalación por consola) no hay conexión que proteger:
+        # se deja el SSH como estaba, abierto, para no cerrarlo por sorpresa.
+        ufw allow 22/tcp comment 'SSH'
+        echo "instalación por consola: SSH (22) queda abierto como antes; restríngelo con tus reglas"
+    fi
+    ufw --force enable
+fi
+if [ -n "${RED_GESTION:-}" ]; then
+    ufw allow from "$RED_GESTION" to any port 443 proto tcp comment 'Panel RadiusControl'
+fi
+# Agente que abre 1812/udp solo a las redes de los routers aplicados.
+install -m 0755 "$DIR/firewall/radiuscontrol-firewall.sh" /usr/local/sbin/radiuscontrol-firewall.sh
+install -m 0644 "$DIR/firewall/radiuscontrol-firewall.service" /etc/systemd/system/radiuscontrol-firewall.service
+systemctl daemon-reload
+systemctl enable radiuscontrol-firewall.service >/dev/null 2>&1
+systemctl restart radiuscontrol-firewall.service
+sleep 4
+systemctl is-active radiuscontrol-firewall.service
+ufw status | grep -E '1812|Status' || true
+PANEL_ABIERTO=0
+ufw show added 2>/dev/null | grep -q -E 'port 443 |^ufw allow 443' && PANEL_ABIERTO=1
 
 echo "== 6b. Actualizaciones"
 install -m 0755 "$DIR/actualizar/radiuscontrol-actualizar.sh" /usr/local/sbin/radiuscontrol-actualizar.sh
@@ -153,6 +188,19 @@ if [ -n "$CLAVE_INICIAL" ]; then
 else
     echo "Clave:    la que definiste en el panel."
 fi
+if [ "$PANEL_ABIERTO" -eq 0 ]; then
+    echo
+    echo "IMPORTANTE: el firewall todavía no deja entrar a nadie al panel (puerto 443)."
+    echo "Ábrelo con tu propia regla, por ejemplo:"
+    echo "    ufw allow from <tu red o tu IP> to any port 443 proto tcp"
+fi
+if [ "$FW_NUEVO" -eq 1 ]; then
+    echo
+    echo "UFW quedó activo: todo lo que no tenga regla se rechaza. Carga las reglas"
+    echo "que necesite tu servidor. Las de 1812/udp las gestiona RadiusControl: no"
+    echo "las añadas ni las borres a mano."
+fi
+echo
 echo "Si pierdes el acceso: docker exec radiuscontrol-api radiuscontrol operador-emergencia admin"
 echo "Si tu IP queda bloqueada: docker exec radiuscontrol-api radiuscontrol desbloquear-ip todas"
 echo "Pruebas:  ./probar.sh"

@@ -34,7 +34,10 @@ type App struct {
 	aplicarMu sync.Mutex
 	autoMu    sync.Mutex
 	autoTimer *time.Timer
-	senuelo   string
+	purgaMu   sync.Mutex
+	// Solo lo usa el bucle de limpieza: evita repetir el mismo aviso en el log.
+	avisoDiscoAjeno bool
+	senuelo         string
 }
 
 func env(clave, defecto string) string {
@@ -133,6 +136,7 @@ func main() {
 
 	go app.bucleRegistro(ctx)
 	go app.bucleSesiones(ctx)
+	go app.bucleLimpieza(ctx)
 	// Al arrancar se aplica lo que haya pendiente. Tras una actualización, el
 	// formato de la configuración compilada puede haber cambiado.
 	app.programarAplicar("sistema")
@@ -362,5 +366,10 @@ func (a *App) rutas() http.Handler {
 	m.HandleFunc("POST /api/actualizacion/aplicar", a.admin(a.pedirActualizacion))
 	m.HandleFunc("GET /api/bloqueos", a.admin(a.listarBloqueos))
 	m.HandleFunc("POST /api/bloqueos/desbloquear", a.admin(a.desbloquearIP))
+
+	// Purga de registros: inicios de sesión y registro de actividad.
+	m.HandleFunc("GET /api/purga", a.admin(a.verPurga))
+	m.HandleFunc("PUT /api/purga", a.admin(a.guardarPurga))
+	m.HandleFunc("POST /api/purga/ejecutar", a.admin(a.ejecutarPurgaManual))
 	return m
 }

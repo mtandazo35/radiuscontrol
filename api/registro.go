@@ -138,7 +138,8 @@ func (a *App) cargarRegistro(ctx context.Context) error {
 		nuevas = append(nuevas, reg)
 	}
 
-	return pgx.BeginFunc(ctx, a.db, func(tx pgx.Tx) error {
+	posicion := desde + int64(len(buf))
+	err = pgx.BeginFunc(ctx, a.db, func(tx pgx.Tx) error {
 		nombres := map[int64][2]string{}
 		filas, err := tx.Query(ctx, `SELECT r.id, r.nombre, COALESCE(e.nombre, '')
 			FROM routers r LEFT JOIN empresas e ON e.id = r.empresa_id`)
@@ -173,22 +174,49 @@ func (a *App) cargarRegistro(ctx context.Context) error {
 		}
 		_, err = tx.Exec(ctx, `INSERT INTO registro_posicion (id, inodo, desplazamiento) VALUES (1, $1, $2)
 			ON CONFLICT (id) DO UPDATE SET inodo = EXCLUDED.inodo, desplazamiento = EXCLUDED.desplazamiento`,
-			inodo, desde+int64(len(buf)))
+			inodo, posicion)
 		return err
 	})
+	if err != nil {
+		return err
+	}
+	return a.rotarRegistro(ctx, ruta, inodo, posicion, info.Size())
+}
+
+// A partir de este tamaño, el archivo del registro se vacía en cuanto está
+// leído entero.
+const tamanoRotacion = 2 << 20
+
+// rotarRegistro vacía el archivo del registro cuando ya está todo cargado en
+// la base, para que no crezca sin límite. tamano es lo que medía al leerlo: si
+// FreeRADIUS ha escrito algo desde entonces, se deja para la vuelta siguiente.
+func (a *App) rotarRegistro(ctx context.Context, ruta string, inodo, posicion, tamano int64) error {
+	if posicion != tamano || tamano <= tamanoRotacion {
+		return nil
+	}
+	info, err := os.Stat(ruta)
+	if err != nil {
+		return err
+	}
+	if st, ok := info.Sys().(*syscall.Stat_t); ok && int64(st.Ino) != inodo {
+		return nil
+	}
+	if info.Size() != tamano {
+		return nil
+	}
+	if err := os.Truncate(ruta, 0); err != nil {
+		return err
+	}
+	// Si esto fallara, la vuelta siguiente vería un archivo más corto que lo
+	// ya leído y empezaría igualmente desde el principio.
+	_, err = a.db.Exec(ctx, `UPDATE registro_posicion SET desplazamiento = 0 WHERE id = 1`)
+	return err
 }
 
 func (a *App) bucleRegistro(ctx context.Context) {
-	ultimaLimpieza := time.Time{}
 	for {
 		if err := a.cargarRegistro(ctx); err != nil {
 			log.Printf("registro: %v", err)
-		}
-		if time.Since(ultimaLimpieza) > time.Hour {
-			ultimaLimpieza = time.Now()
-			if _, err := a.db.Exec(ctx, `DELETE FROM autenticaciones WHERE fecha < now() - interval '180 days'`); err != nil {
-				log.Printf("registro: limpieza: %v", err)
-			}
 		}
 		time.Sleep(2 * time.Second)
 	}

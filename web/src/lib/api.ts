@@ -179,6 +179,37 @@ export interface Bloqueos {
   regla: { intentos: number; ventana_minutos: number; bloqueo_minutos: number; intentos_cuenta: number; bloqueo_cuenta_m: number };
 }
 
+// Limpieza de registros: cuánto se conserva, cada cuánto se limpia y a partir
+// de qué uso de disco se limpia de emergencia.
+export interface AjustesPurga {
+  dias_autenticaciones: number;
+  dias_actividad: number;
+  cada_horas: number;
+  porcentaje_disco: number;
+}
+
+export interface RegistroPurga {
+  id: number;
+  fecha: string;
+  motivo: "programada" | "manual" | "disco";
+  operador: string;
+  autenticaciones: number;
+  actividad: number;
+  disco_antes: number;
+  disco_despues: number;
+}
+
+export interface Purga {
+  ajustes: AjustesPurga;
+  disco: { porcentaje: number; total_bytes: number; libre_bytes: number };
+  // Lo que ocupan los registros y si borrarlos liberaría algo apreciable.
+  registros_bytes: number;
+  registros_pesan: boolean;
+  filas: { autenticaciones: number; actividad: number };
+  mas_antiguo: { autenticaciones: string | null; actividad: string | null };
+  ultimas: RegistroPurga[];
+}
+
 export interface PaginaAutenticaciones {
   autenticaciones: Autenticacion[];
   total: number;

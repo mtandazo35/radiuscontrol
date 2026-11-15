@@ -26,9 +26,45 @@ FreeRADIUS 3.2.x, Go (API REST), React + TypeScript + Tailwind, PostgreSQL y Doc
 Compose. Los agentes del servidor (firewall y actualización) son guiones de Bash con
 systemd.
 
-## Instalación
+## ⚡ Instalación rápida (one-liner)
 
 En un servidor Debian o Ubuntu, como root:
+
+```
+curl -fsSL https://raw.githubusercontent.com/mtandazo35/radiuscontrol/main/install.sh -o /root/install-radiuscontrol.sh && bash /root/install-radiuscontrol.sh
+```
+
+Descarga el repositorio en `/root/radiuscontrol`, instala Docker si falta, genera los
+secretos, levanta los servicios y deja activos los agentes de firewall y de actualización.
+Al terminar muestra la dirección del panel y la contraseña inicial de `admin`, una sola
+vez; después la borra del disco.
+
+### Firewall: lo mínimo, el resto lo decides tú
+
+El instalador no impone la seguridad del servidor. Solo hace lo imprescindible:
+
+- Instala y activa UFW, porque el puerto RADIUS (1812/udp) se abre y se cierra solo,
+  únicamente para las redes de los routers que des de alta en el panel.
+- Antes de activarlo, abre el SSH solo para la conexión desde la que estás instalando,
+  para no dejarte fuera.
+- Si UFW ya estaba activo, no toca ninguna regla existente.
+
+Todo lo demás lo cargas tú con tus reglas, incluido quién puede abrir el panel:
+
+```
+ufw allow from 192.0.2.0/24 to any port 443 proto tcp
+```
+
+Si prefieres que el instalador abra el panel a una red, indícala:
+
+```
+curl -fsSL https://raw.githubusercontent.com/mtandazo35/radiuscontrol/main/install.sh -o /root/install-radiuscontrol.sh && RED_GESTION=192.0.2.0/24 bash /root/install-radiuscontrol.sh
+```
+
+Ejecutar la misma línea en un servidor que ya tiene RadiusControl lo pone al día sin
+regenerar secretos ni credenciales.
+
+### Instalación paso a paso
 
 ```
 git clone https://github.com/mtandazo35/radiuscontrol.git /root/radiuscontrol
@@ -36,8 +72,7 @@ cd /root/radiuscontrol/despliegue
 RED_GESTION=192.0.2.0/24 ./instalar.sh
 ```
 
-`RED_GESTION` es la red desde la que se podrá abrir el panel (puerto 443). El instalador
-muestra la contraseña inicial de `admin` una sola vez y la borra del disco.
+`RED_GESTION` es la red desde la que se podrá abrir el panel.
 
 Para comprobar la instalación:
 
