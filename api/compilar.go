@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -29,9 +30,20 @@ type clienteComp struct {
 	Red      string
 	Secreto  string
 	ExigirMA bool
+	// Acceso es «general» o «restringido». Los permisos solo cuentan en un
+	// router restringido.
+	Acceso   string
+	Permisos []permisoComp
+}
+
+// permisoComp es el grupo que recibe un usuario en un router restringido.
+type permisoComp struct {
+	UsuarioID int64
+	Grupo     string
 }
 
 type usuarioComp struct {
+	ID      int64
 	Usuario string
 	Grupo   string
 	HashNT  string
@@ -81,14 +93,29 @@ func renderizar(clientes []clienteComp, usuarios []usuarioComp) *Compilado {
 		fmt.Fprintf(&c, "\tsecret = %s\n", comillaSimple(cl.Secreto))
 		fmt.Fprintf(&c, "\tshortname = rc-%d-%d\n", cl.RouterID, cl.RedID)
 		fmt.Fprintf(&c, "\trequire_message_authenticator = %s\n", exigir)
-		c.WriteString("\tlimit_proxy_state = yes\n}\n")
+		c.WriteString("\tlimit_proxy_state = yes\n")
+		// Accesos por router: los lee la política rc_accesos con %{client:...}.
+		if cl.Acceso == accesoRestringido {
+			c.WriteString("\trc_acceso = restringido\n")
+			permisos := append([]permisoComp(nil), cl.Permisos...)
+			sort.SliceStable(permisos, func(i, j int) bool { return permisos[i].UsuarioID < permisos[j].UsuarioID })
+			for _, p := range permisos {
+				fmt.Fprintf(&c, "\trc_u_%d = %s\n", p.UsuarioID, comillaSimple(p.Grupo))
+			}
+		} else {
+			c.WriteString("\trc_acceso = general\n")
+		}
+		c.WriteString("}\n")
 	}
 
 	var u bytes.Buffer
 	u.WriteString("# Generado por RadiusControl. No editar a mano.\n")
 	for _, us := range usuarios {
 		sensibles = append(sensibles, us.HashNT)
-		fmt.Fprintf(&u, "\n%s\tNT-Password := \"%s\"\n\tMikrotik-Group := \"%s\"\n", us.Usuario, us.HashNT, us.Grupo)
+		// El identificador viaja en un atributo de control para que rc_accesos
+		// pueda buscar el permiso del usuario en el router.
+		fmt.Fprintf(&u, "\n%s\tNT-Password := \"%s\", Tmp-Integer-0 := %d\n\tMikrotik-Group := \"%s\"\n",
+			us.Usuario, us.HashNT, us.ID, us.Grupo)
 	}
 
 	return &Compilado{
@@ -100,9 +127,39 @@ func renderizar(clientes []clienteComp, usuarios []usuarioComp) *Compilado {
 
 // compilarDeseado lee el estado deseado de la base y lo renderiza.
 func (a *App) compilarDeseado(ctx context.Context) (*Compilado, error) {
+	// Permisos de los routers restringidos. Solo cuentan los usuarios activos:
+	// los demás no tienen entrada en authorize y no podrían entrar igualmente.
+	permisos := map[int64][]permisoComp{}
+	filas, err := a.db.Query(ctx, `SELECT ra.router_id, ra.usuario_id, ra.grupo
+		FROM router_accesos ra JOIN routers r ON r.id = ra.router_id
+		JOIN usuarios_mikrotik u ON u.id = ra.usuario_id
+		WHERE r.activo AND r.acceso = 'restringido' AND u.activo
+		ORDER BY ra.router_id, ra.usuario_id`)
+	if err != nil {
+		return nil, err
+	}
+	for filas.Next() {
+		var routerID int64
+		var p permisoComp
+		if err := filas.Scan(&routerID, &p.UsuarioID, &p.Grupo); err != nil {
+			filas.Close()
+			return nil, err
+		}
+		// Defensa adicional: nada que no haya pasado la validación llega al archivo.
+		if validarGrupo(p.Grupo) != nil {
+			filas.Close()
+			return nil, fmt.Errorf("el router %d tiene un acceso que no se puede compilar", routerID)
+		}
+		permisos[routerID] = append(permisos[routerID], p)
+	}
+	filas.Close()
+	if err := filas.Err(); err != nil {
+		return nil, err
+	}
+
 	var clientes []clienteComp
-	filas, err := a.db.Query(ctx, `SELECT r.id, rr.id, text(rr.red), r.secreto_cifrado,
-		r.exigir_message_authenticator
+	filas, err = a.db.Query(ctx, `SELECT r.id, rr.id, text(rr.red), r.secreto_cifrado,
+		r.exigir_message_authenticator, r.acceso
 		FROM routers r JOIN router_redes rr ON rr.router_id = r.id
 		WHERE r.activo ORDER BY r.id, rr.id`)
 	if err != nil {
@@ -111,10 +168,15 @@ func (a *App) compilarDeseado(ctx context.Context) (*Compilado, error) {
 	for filas.Next() {
 		var cl clienteComp
 		var cifrado []byte
-		if err := filas.Scan(&cl.RouterID, &cl.RedID, &cl.Red, &cifrado, &cl.ExigirMA); err != nil {
+		if err := filas.Scan(&cl.RouterID, &cl.RedID, &cl.Red, &cifrado, &cl.ExigirMA, &cl.Acceso); err != nil {
 			filas.Close()
 			return nil, err
 		}
+		if !accesoValido(cl.Acceso) {
+			filas.Close()
+			return nil, fmt.Errorf("el router %d tiene un modo de acceso que no se puede compilar", cl.RouterID)
+		}
+		cl.Permisos = permisos[cl.RouterID]
 		claro, err := a.cifra.Descifrar(cifrado, dominioSecreto)
 		if err != nil {
 			filas.Close()
@@ -129,7 +191,7 @@ func (a *App) compilarDeseado(ctx context.Context) (*Compilado, error) {
 	}
 
 	var usuarios []usuarioComp
-	filas, err = a.db.Query(ctx, `SELECT usuario, grupo, hash_nt_cifrado
+	filas, err = a.db.Query(ctx, `SELECT id, usuario, grupo, hash_nt_cifrado
 		FROM usuarios_mikrotik WHERE activo ORDER BY usuario`)
 	if err != nil {
 		return nil, err
@@ -137,7 +199,7 @@ func (a *App) compilarDeseado(ctx context.Context) (*Compilado, error) {
 	for filas.Next() {
 		var us usuarioComp
 		var cifrado []byte
-		if err := filas.Scan(&us.Usuario, &us.Grupo, &cifrado); err != nil {
+		if err := filas.Scan(&us.ID, &us.Usuario, &us.Grupo, &cifrado); err != nil {
 			filas.Close()
 			return nil, err
 		}
@@ -522,11 +584,11 @@ func (a *App) verEstado(w http.ResponseWriter, r *http.Request, _ *Operador) err
 			"routers": deseado.Routers, "usuarios": deseado.Usuarios,
 			"sha_clients": deseado.ShaClients, "sha_authorize": deseado.ShaAuthorize,
 		},
-		"activa":     activa,
-		"freeradius": cargado,
-		"firewall":           firewall,
-		"firewall_al_dia":    firewallAlDia,
-		"ultimo_fallo":       a.ultimoFallo(ctx, activa),
+		"activa":          activa,
+		"freeradius":      cargado,
+		"firewall":        firewall,
+		"firewall_al_dia": firewallAlDia,
+		"ultimo_fallo":    a.ultimoFallo(ctx, activa),
 	})
 	return nil
 }

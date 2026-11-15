@@ -86,13 +86,13 @@ func TestNormalizarRedes(t *testing.T) {
 
 func TestNormalizarRedesRechaza(t *testing.T) {
 	casos := map[string][]string{
-		"vacío":              {},
-		"todas las v4":       {"0.0.0.0/0"},
-		"todas las v6":       {"::/0"},
-		"texto":              {"router-a"},
-		"superpuestas":       {"192.0.2.0/24", "192.0.2.128/25"},
-		"v4 dentro de v6":    {"::ffff:192.0.2.1"},
-		"máscara imposible":  {"192.0.2.0/33"},
+		"vacío":             {},
+		"todas las v4":      {"0.0.0.0/0"},
+		"todas las v6":      {"::/0"},
+		"texto":             {"router-a"},
+		"superpuestas":      {"192.0.2.0/24", "192.0.2.128/25"},
+		"v4 dentro de v6":   {"::ffff:192.0.2.1"},
+		"máscara imposible": {"192.0.2.0/33"},
 	}
 	for nombre, entrada := range casos {
 		if _, err := normalizarRedes(entrada); err == nil {
@@ -177,7 +177,7 @@ func TestRenderizarEsDeterminista(t *testing.T) {
 		{RouterID: 1, RedID: 2, Red: "2001:db8::/64", Secreto: "abc", ExigirMA: true},
 		{RouterID: 2, RedID: 3, Red: "198.51.100.8/29", Secreto: "xyz", ExigirMA: false},
 	}
-	usuarios := []usuarioComp{{Usuario: "tecnico1", Grupo: "full", HashNT: "8846F7EAEE8FB117AD06BDD830B7586C"}}
+	usuarios := []usuarioComp{{ID: 12, Usuario: "tecnico1", Grupo: "full", HashNT: "8846F7EAEE8FB117AD06BDD830B7586C"}}
 	a, b := renderizar(clientes, usuarios), renderizar(clientes, usuarios)
 	if a.ShaClients != b.ShaClients || a.ShaAuthorize != b.ShaAuthorize {
 		t.Fatal("la misma entrada debe dar la misma huella")
@@ -190,12 +190,19 @@ func TestRenderizarEsDeterminista(t *testing.T) {
 		"client rc_1_1 {", "ipaddr = 192.0.2.10/32", "ipaddr = 2001:db8::/64",
 		"secret = 'abc'", "require_message_authenticator = yes",
 		"client rc_2_3 {", "require_message_authenticator = no", "limit_proxy_state = yes",
+		"\tlimit_proxy_state = yes\n\trc_acceso = general\n}\n",
 	} {
 		if !strings.Contains(texto, esperado) {
 			t.Errorf("falta %q en clients.conf", esperado)
 		}
 	}
-	if !strings.Contains(string(a.Authorize), "tecnico1\tNT-Password := \"8846F7EAEE8FB117AD06BDD830B7586C\"\n\tMikrotik-Group := \"full\"\n") {
+	if n := strings.Count(texto, "\trc_acceso = general\n"); n != 3 {
+		t.Errorf("cada sección client debe llevar su modo de acceso: %d de 3", n)
+	}
+	if strings.Contains(texto, "rc_u_") || strings.Contains(texto, "restringido") {
+		t.Errorf("un router general no lleva permisos por usuario:\n%s", texto)
+	}
+	if !strings.Contains(string(a.Authorize), "\ntecnico1\tNT-Password := \"8846F7EAEE8FB117AD06BDD830B7586C\", Tmp-Integer-0 := 12\n\tMikrotik-Group := \"full\"\n") {
 		t.Errorf("authorize inesperado:\n%s", a.Authorize)
 	}
 	usuarios[0].Grupo = "read"
@@ -255,6 +262,76 @@ func TestListaRedes(t *testing.T) {
 	}
 	if vacia := string(listaRedes(renderizar(nil, nil).Clients)); !strings.HasSuffix(vacia, "# fin\n") || strings.Count(vacia, "\n") != 2 {
 		t.Fatalf("la lista vacía debe llevar solo la cabecera y el final:\n%s", vacia)
+	}
+}
+
+func TestRenderizarAccesosPorRouter(t *testing.T) {
+	permisos := []permisoComp{{UsuarioID: 30, Grupo: "read"}, {UsuarioID: 4, Grupo: "full"}, {UsuarioID: 12, Grupo: "write"}}
+	clientes := func() []clienteComp {
+		return []clienteComp{
+			{RouterID: 1, RedID: 1, Red: "192.0.2.10/32", Secreto: "abc", ExigirMA: true,
+				Acceso: accesoRestringido, Permisos: permisos},
+			{RouterID: 1, RedID: 2, Red: "192.0.2.11/32", Secreto: "abc", ExigirMA: true,
+				Acceso: accesoRestringido, Permisos: permisos},
+			// Un router general no compila sus asignaciones aunque las tenga.
+			{RouterID: 2, RedID: 3, Red: "198.51.100.8/29", Secreto: "xyz", ExigirMA: true,
+				Acceso: accesoGeneral, Permisos: []permisoComp{{UsuarioID: 99, Grupo: "full"}}},
+		}
+	}
+	a := renderizar(clientes(), nil)
+	texto := string(a.Clients)
+
+	// Las líneas van ordenadas por identificador de usuario y se repiten en
+	// cada red del router restringido.
+	bloque := "\tlimit_proxy_state = yes\n\trc_acceso = restringido\n" +
+		"\trc_u_4 = 'full'\n\trc_u_12 = 'write'\n\trc_u_30 = 'read'\n}\n"
+	if n := strings.Count(texto, bloque); n != 2 {
+		t.Fatalf("el router restringido debe llevar sus permisos ordenados en sus 2 redes (%d):\n%s", n, texto)
+	}
+	if permisos[0].UsuarioID != 30 {
+		t.Fatal("renderizar no debe reordenar la lista que recibe")
+	}
+
+	general := texto[strings.Index(texto, "client rc_2_3 {"):]
+	if !strings.Contains(general, "\trc_acceso = general\n}\n") {
+		t.Errorf("el router general debe declarar su modo:\n%s", general)
+	}
+	if strings.Contains(general, "rc_u_") {
+		t.Errorf("un router general no lleva ningún permiso por usuario:\n%s", general)
+	}
+	if n := strings.Count(texto, "rc_u_"); n != 6 {
+		t.Errorf("se esperaban 6 líneas de permisos y hay %d", n)
+	}
+
+	// El mismo dato en otro orden da los mismos bytes.
+	otro := clientes()
+	otro[0].Permisos = []permisoComp{{UsuarioID: 12, Grupo: "write"}, {UsuarioID: 30, Grupo: "read"}, {UsuarioID: 4, Grupo: "full"}}
+	otro[1].Permisos = otro[0].Permisos
+	if renderizar(otro, nil).ShaClients != a.ShaClients {
+		t.Fatal("el orden de los permisos no debe cambiar la huella")
+	}
+
+	// Cambiar una asignación, quitarla o cambiar el modo cambia la huella.
+	cambiado := clientes()
+	cambiado[0].Permisos = []permisoComp{{UsuarioID: 30, Grupo: "full"}, {UsuarioID: 4, Grupo: "full"}, {UsuarioID: 12, Grupo: "write"}}
+	if renderizar(cambiado, nil).ShaClients == a.ShaClients {
+		t.Fatal("cambiar el grupo de una asignación debe cambiar la huella de clients")
+	}
+	quitado := clientes()
+	quitado[0].Permisos = permisos[:2]
+	if renderizar(quitado, nil).ShaClients == a.ShaClients {
+		t.Fatal("quitar una asignación debe cambiar la huella de clients")
+	}
+	modo := clientes()
+	modo[2].Acceso = accesoRestringido
+	if renderizar(modo, nil).ShaClients == a.ShaClients {
+		t.Fatal("cambiar el modo de un router debe cambiar la huella de clients")
+	}
+
+	// Las redes que ve el firewall no dependen de los accesos.
+	want := "# Generado por RadiusControl. Redes con acceso a 1812/udp.\n192.0.2.10/32\n192.0.2.11/32\n198.51.100.8/29\n# fin\n"
+	if got := string(listaRedes(a.Clients)); got != want {
+		t.Fatalf("lista de redes inesperada:\n%s", got)
 	}
 }
 

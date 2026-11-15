@@ -369,6 +369,172 @@ comprobar "Firewall: las demás reglas del servidor no cambian" \
     "$([ "$(ufw show added | grep -v "comment 'radiuscontrol'")" = "$OTRAS_REGLAS" ]; echo $?)"
 comprobar "Suspensión: un router suspendido deja de recibir respuesta" "$(printf '%s' "$S" | grep -q 'Received'; [ $? -ne 0 ]; echo $?)"
 
+# ---------------------------------------------------------------- accesos por router
+# De la sección anterior llegan suspendidos el usuario (con el grupo read) y el
+# router de prueba: aquí se reactivan, y al terminar se devuelven a ese estado.
+# El segundo router se distingue por su dirección de origen, 127.0.0.2, que
+# radclient usa cuando la petición lleva Packet-Src-IP-Address. Tiene su propia
+# empresa para que los cambios masivos por empresa solo lo alcancen a él.
+EMPRESA_ACCESOS="Empresa de prueba de accesos"
+ROUTER_B="$ROUTER_PRUEBA-accesos"
+USUARIO_B="$USUARIO_PRUEBA-accesos"
+USUARIO_INEXISTENTE=2147483646999
+MOTIVO_SIN_ACCESO="El usuario no tiene acceso a este router"
+
+api PUT "/api/usuarios/$USUARIO_ID" '{"nombre_completo":"Prueba automática","grupo":"write","activo":true}'
+api PUT "/api/routers/$ROUTER_ID" "$(jq -n --arg n "$ROUTER_PRUEBA" '{nombre:$n,empresa:"Empresa de prueba",redes:["127.0.0.1"],activo:true}')"
+comprobar "Accesos: editar un router sin indicar el modo lo deja en general, 200" \
+    "$(codigo_es 200 && printf '%s' "$CUERPO" | jq -e '.router.acceso == "general" and .router.accesos == []' >/dev/null; echo $?)"
+
+api POST /api/routers "$(jq -n --arg n "$ROUTER_B" --arg e "$EMPRESA_ACCESOS" '{nombre:$n,empresa:$e,descripcion:"Prueba automática de accesos",redes:["127.0.0.2"]}')"
+comprobar "Accesos: un router nuevo nace en modo general y sin asignaciones, 201" \
+    "$(codigo_es 201 && printf '%s' "$CUERPO" | jq -e '.router.acceso == "general" and .router.accesos == []' >/dev/null; echo $?)" \
+    "$(printf '%s' "$CUERPO" | jq -c '.router | {nombre, empresa, redes, acceso, accesos}')"
+ROUTER_B_ID="$(printf '%s' "$CUERPO" | jq -r '.router.id')"
+SECRETO_B="$(printf '%s' "$CUERPO" | jq -r '.secreto_generado')"
+OCULTAR+=("$SECRETO_B")
+poner_secreto /tmp/secreto-b "$SECRETO_B"
+
+api POST /api/usuarios "$(jq -n --arg u "$USUARIO_B" '{usuario:$u,nombre_completo:"Prueba automática de accesos",grupo:"write"}')"
+comprobar "Accesos: alta del segundo usuario de prueba, 201" "$(codigo_es 201; echo $?)"
+USUARIO_B_ID="$(printf '%s' "$CUERPO" | jq -r '.usuario.id')"
+CLAVE_B="$(printf '%s' "$CUERPO" | jq -r '.clave_generada')"
+OCULTAR+=("$CLAVE_B")
+
+# En el router A (127.0.0.1) y en el B (127.0.0.2), con cada usuario.
+EN_B="Packet-Src-IP-Address = 127.0.0.2"
+PAP_B="User-Name = \"$USUARIO_B\", User-Password = \"$CLAVE_B\""
+acepta() { printf '%s' "$1" | grep -q 'Received Access-Accept'; }
+rechaza() { printf '%s' "$1" | grep -q 'Received Access-Reject'; }
+grupo_es() { printf '%s' "$1" | grep -q "Mikrotik-Group = \"$2\""; }
+# editar_b <campos de acceso en JSON>: edita el router B conservando lo demás
+editar_b() {
+    api PUT "/api/routers/$ROUTER_B_ID" "$(jq -n --arg n "$ROUTER_B" --arg e "$EMPRESA_ACCESOS" --argjson x "$1" \
+        '{nombre:$n,empresa:$e,descripcion:"Prueba automática de accesos",redes:["127.0.0.2"]} + $x')"
+}
+masivo() { api POST /api/accesos/masivo "$1"; }
+
+aplicar
+comprobar "Accesos: los dos routers de prueba quedan aplicados" "$?"
+
+# (a) modo general
+S="$(radius 127.0.0.1 /tmp/secreto-b "$PAP_OK, $EN_B")"
+comprobar "Accesos: en un router general el usuario entra con su grupo general (write)" \
+    "$(acepta "$S" && grupo_es "$S" write; echo $?)" "$S"
+
+# (b) restringido sin asignaciones
+editar_b '{"acceso":"restringido"}'
+comprobar "Accesos: pasar el router a restringido, 200" \
+    "$(codigo_es 200 && printf '%s' "$CUERPO" | jq -e '.router.acceso == "restringido" and .router.accesos == []' >/dev/null; echo $?)" "$CUERPO"
+aplicar
+S="$(radius 127.0.0.1 /tmp/secreto-b "$PAP_OK, $EN_B")"
+comprobar "Accesos: en un router restringido, un usuario sin asignar es rechazado" "$(rechaza "$S"; echo $?)" "$S"
+sleep 5
+api GET "/api/autenticaciones?buscar=$USUARIO_PRUEBA&resultado=rechazado&tamano=100"
+comprobar "Accesos: el registro anota el motivo del rechazo" \
+    "$(printf '%s' "$CUERPO" | jq -e --arg r "$ROUTER_B" --arg m "$MOTIVO_SIN_ACCESO" 'any(.autenticaciones[]; .router == $r and .ip_origen == "127.0.0.2" and (.motivo | contains($m)))' >/dev/null; echo $?)" \
+    "$(printf '%s' "$CUERPO" | jq -c --arg r "$ROUTER_B" '[.autenticaciones[] | select(.router == $r)][0] | {resultado, usuario, router, ip_origen, motivo}')"
+
+# (c) asignado con otro grupo en ese router
+editar_b "$(jq -n --argjson u "$USUARIO_ID" '{accesos:[{usuario_id:$u,grupo:"read"}]}')"
+comprobar "Accesos: asignar un usuario al router conserva el modo y devuelve la asignación, 200" \
+    "$(codigo_es 200 && printf '%s' "$CUERPO" | jq -e --arg u "$USUARIO_PRUEBA" --argjson i "$USUARIO_ID" '.router.acceso == "restringido" and .router.accesos == [{usuario_id:$i,usuario:$u,grupo:"read"}]' >/dev/null; echo $?)" \
+    "$(printf '%s' "$CUERPO" | jq -c '.router | {acceso, accesos}')"
+aplicar
+S="$(radius 127.0.0.1 /tmp/secreto-b "$PAP_OK, $EN_B")"
+comprobar "Accesos: el usuario asignado entra y recibe el grupo de ese router (read), no el general" \
+    "$(acepta "$S" && grupo_es "$S" read; echo $?)" "$S"
+S="$(radius 127.0.0.1 /tmp/secreto-raro "$PAP_OK")"
+comprobar "Accesos: en el otro router, que es general, sigue recibiendo su grupo general (write)" \
+    "$(acepta "$S" && grupo_es "$S" write; echo $?)" "$S"
+
+# (d) un segundo usuario sin asignar
+S="$(radius 127.0.0.1 /tmp/secreto-b "$PAP_B, $EN_B")"
+comprobar "Accesos: el segundo usuario, sin asignar, es rechazado en el router restringido" "$(rechaza "$S"; echo $?)" "$S"
+S="$(radius 127.0.0.1 /tmp/secreto-raro "$PAP_B")"
+comprobar "Accesos: el segundo usuario entra en el router general con su grupo general (write)" \
+    "$(acepta "$S" && grupo_es "$S" write; echo $?)" "$S"
+
+# (e) cambio masivo: asignar por empresa (el nombre no distingue mayúsculas)
+masivo "$(jq -n --arg e "$EMPRESA_ACCESOS" --argjson u "$USUARIO_B_ID" '{routers:{empresa:($e | ascii_upcase)},usuarios:[$u],accion:"asignar",grupo:"full"}')"
+comprobar "Masivo: asignar un usuario a los routers de una empresa, 200" \
+    "$(codigo_es 200 && printf '%s' "$CUERPO" | jq -e '.routers == 1 and .asignaciones == 1' >/dev/null; echo $?)" "$CUERPO"
+aplicar
+S="$(radius 127.0.0.1 /tmp/secreto-b "$PAP_B, $EN_B")"
+comprobar "Masivo: el usuario asignado entra en el router restringido con el grupo full" \
+    "$(acepta "$S" && grupo_es "$S" full; echo $?)" "$S"
+S="$(radius 127.0.0.1 /tmp/secreto-b "$PAP_OK, $EN_B")"
+comprobar "Masivo: asignar a un usuario no altera la asignación de otro (read)" \
+    "$(acepta "$S" && grupo_es "$S" read; echo $?)"
+api GET /api/routers
+comprobar "Masivo: el listado devuelve las asignaciones ordenadas por usuario" \
+    "$(printf '%s' "$CUERPO" | jq -e --argjson r "$ROUTER_B_ID" --arg a "$USUARIO_PRUEBA" --arg b "$USUARIO_B" '[.[] | select(.id == $r) | .accesos[] | [.usuario, .grupo]] == [[$a, "read"], [$b, "full"]]' >/dev/null; echo $?)" \
+    "$(printf '%s' "$CUERPO" | jq -c --argjson r "$ROUTER_B_ID" '.[] | select(.id == $r) | {acceso, accesos}')"
+api GET "/api/auditoria?buscar=accesos.cambio_masivo&tamano=5"
+comprobar "Masivo: el cambio queda en el registro de actividad como un solo evento" \
+    "$(printf '%s' "$CUERPO" | jq -e --arg o "$ADMIN_PRUEBA" '[.eventos[] | select(.accion == "accesos.cambio_masivo" and .operador == $o)] | length == 1 and .[0].objeto == "1 router" and (.[0].detalle | contains("asignar"))' >/dev/null; echo $?)" \
+    "$(printf '%s' "$CUERPO" | jq -c '[.eventos[] | select(.accion == "accesos.cambio_masivo")][0] | {operador, accion, objeto, detalle}')"
+
+# (f) cambio masivo: quitar, eligiendo los routers por lista
+masivo "$(jq -n --argjson r "$ROUTER_B_ID" --argjson u "$USUARIO_B_ID" '{routers:{ids:[$r]},usuarios:[$u],accion:"quitar"}')"
+comprobar "Masivo: quitar la asignación en una lista de routers, 200" \
+    "$(codigo_es 200 && printf '%s' "$CUERPO" | jq -e '.routers == 1 and .asignaciones == 1' >/dev/null; echo $?)" "$CUERPO"
+aplicar
+S="$(radius 127.0.0.1 /tmp/secreto-b "$PAP_B, $EN_B")"
+comprobar "Masivo: el usuario al que se quita la asignación vuelve a quedar fuera" "$(rechaza "$S"; echo $?)" "$S"
+
+# (g) cambio masivo: volver al modo general
+masivo "$(jq -n --arg e "$EMPRESA_ACCESOS" '{routers:{empresa:$e},accion:"modo",modo:"general"}')"
+comprobar "Masivo: cambiar el modo de los routers de una empresa, 200" \
+    "$(codigo_es 200 && printf '%s' "$CUERPO" | jq -e '.routers == 1 and .asignaciones == 0' >/dev/null; echo $?)" "$CUERPO"
+aplicar
+S="$(radius 127.0.0.1 /tmp/secreto-b "$PAP_OK, $EN_B")"
+comprobar "Masivo: de vuelta en modo general, el usuario asignado entra con su grupo general (write)" \
+    "$(acepta "$S" && grupo_es "$S" write; echo $?)" "$S"
+S="$(radius 127.0.0.1 /tmp/secreto-b "$PAP_B, $EN_B")"
+comprobar "Masivo: de vuelta en modo general, el usuario sin asignar también entra (write)" \
+    "$(acepta "$S" && grupo_es "$S" write; echo $?)" "$S"
+api GET /api/routers
+comprobar "Masivo: en modo general el router conserva sus asignaciones para cuando vuelva a restringido" \
+    "$(printf '%s' "$CUERPO" | jq -e --argjson r "$ROUTER_B_ID" --argjson i "$USUARIO_ID" '.[] | select(.id == $r) | .acceso == "general" and (.accesos | length) == 1 and .accesos[0].usuario_id == $i and .accesos[0].grupo == "read"' >/dev/null; echo $?)"
+
+# (h) validaciones: ninguna debe cambiar nada
+masivo '{"routers":{"todos":false,"empresa":"","ids":[]},"accion":"modo","modo":"general"}'
+comprobar "Masivo: sin criterio para elegir los routers se rechaza, 400" "$(codigo_es 400; echo $?)" "$CUERPO"
+masivo "$(jq -n --arg e "$EMPRESA_ACCESOS" --argjson r "$ROUTER_B_ID" '{routers:{empresa:$e,ids:[$r]},accion:"modo",modo:"general"}')"
+comprobar "Masivo: dos criterios a la vez se rechazan, 400" "$(codigo_es 400; echo $?)" "$CUERPO"
+masivo '{"routers":{"empresa":"empresa-que-no-existe-automatica"},"accion":"modo","modo":"general"}'
+comprobar "Masivo: una selección que no alcanza a ningún router se rechaza, 400" "$(codigo_es 400; echo $?)" "$CUERPO"
+masivo "$(jq -n --argjson r "$ROUTER_B_ID" --argjson u "$USUARIO_B_ID" '{routers:{ids:[$r]},usuarios:[$u],accion:"asignar",grupo:"no válido"}')"
+comprobar "Masivo: un grupo no válido se rechaza, 400" "$(codigo_es 400; echo $?)" "$CUERPO"
+masivo "$(jq -n --argjson r "$ROUTER_B_ID" --argjson u "$USUARIO_INEXISTENTE" '{routers:{ids:[$r]},usuarios:[$u],accion:"asignar",grupo:"read"}')"
+comprobar "Masivo: un usuario inexistente se rechaza, 400" "$(codigo_es 400; echo $?)" "$CUERPO"
+masivo "$(jq -n --argjson r "$ROUTER_B_ID" '{routers:{ids:[$r]},accion:"modo",modo:"abierto"}')"
+comprobar "Masivo: un modo desconocido se rechaza, 400" "$(codigo_es 400; echo $?)" "$CUERPO"
+masivo "$(jq -n --argjson r "$ROUTER_B_ID" '{routers:{ids:[$r]},usuarios:[],accion:"asignar",grupo:"read"}')"
+comprobar "Masivo: asignar sin usuarios se rechaza, 400" "$(codigo_es 400; echo $?)" "$CUERPO"
+editar_b '{"acceso":"abierto"}'
+comprobar "Accesos: al editar un router, un modo desconocido se rechaza, 400" "$(codigo_es 400; echo $?)" "$CUERPO"
+editar_b "$(jq -n --argjson u "$USUARIO_INEXISTENTE" '{accesos:[{usuario_id:$u,grupo:"read"}]}')"
+comprobar "Accesos: al editar un router, un usuario inexistente se rechaza, 400" "$(codigo_es 400; echo $?)" "$CUERPO"
+editar_b "$(jq -n --argjson u "$USUARIO_ID" '{accesos:[{usuario_id:$u,grupo:"read"},{usuario_id:$u,grupo:"full"}]}')"
+comprobar "Accesos: al editar un router, un usuario repetido se rechaza, 400" "$(codigo_es 400; echo $?)" "$CUERPO"
+api GET /api/routers
+comprobar "Accesos: las solicitudes rechazadas no alteran el router" \
+    "$(printf '%s' "$CUERPO" | jq -e --argjson r "$ROUTER_B_ID" '.[] | select(.id == $r) | .acceso == "general" and (.accesos | length) == 1 and .accesos[0].grupo == "read"' >/dev/null; echo $?)"
+
+# Se deja todo como estaba al llegar: fuera el segundo router y el segundo
+# usuario, y suspendidos de nuevo el usuario y el router de prueba.
+api DELETE "/api/routers/$ROUTER_B_ID"
+api DELETE "/api/usuarios/$USUARIO_B_ID"
+api PUT "/api/usuarios/$USUARIO_ID" '{"nombre_completo":"Prueba automática","grupo":"read","activo":false}'
+api PUT "/api/routers/$ROUTER_ID" "$(jq -n --arg n "$ROUTER_PRUEBA" '{nombre:$n,empresa:"Empresa de prueba",redes:["127.0.0.1"],activo:false}')"
+aplicar
+comprobar "Accesos: datos propios de la sección retirados y configuración aplicada" "$?"
+docker exec "$RADIUS" rm -f /tmp/secreto-b
+S="$(radius 127.0.0.1 /tmp/secreto-raro "$PAP_OK")"
+comprobar "Accesos: el router de prueba vuelve a quedar suspendido" "$(printf '%s' "$S" | grep -q 'Received'; [ $? -ne 0 ]; echo $?)"
+
 # ---------------------------------------------------------------- acceso y seguridad del panel
 COOKIE_ADMIN="$COOKIE"
 api GET /api/operadores
@@ -390,6 +556,9 @@ api GET /api/routers
 comprobar "Seguridad: la cuenta de solo lectura puede consultar, 200" "$(codigo_es 200; echo $?)"
 api POST /api/routers "$(jq -n --arg n "$ROUTER_PRUEBA-5" '{nombre:$n,empresa:"Empresa de prueba",redes:["192.0.2.55"]}')"
 comprobar "Seguridad: la cuenta de solo lectura no puede crear routers, 403" "$(codigo_es 403; echo $?)" "$CUERPO"
+# Solo apunta al router de prueba: si el control fallara, no tocaría nada más.
+api POST /api/accesos/masivo "$(jq -n --argjson r "$ROUTER_ID" '{routers:{ids:[$r]},accion:"modo",modo:"restringido"}')"
+comprobar "Seguridad: la cuenta de solo lectura no puede hacer cambios masivos de accesos, 403" "$(codigo_es 403; echo $?)" "$CUERPO"
 api GET /api/operadores
 comprobar "Seguridad: la cuenta de solo lectura no ve los operadores, 403" "$(codigo_es 403; echo $?)"
 api GET /api/auditoria
@@ -666,9 +835,9 @@ comprobar "El historial de versiones ya no está disponible, 404" "$(codigo_es 4
 limpiar
 aplicar
 comprobar "Limpieza: datos de prueba borrados y configuración aplicada" "$?"
-docker exec "$RADIUS" rm -f /tmp/secreto /tmp/secreto-malo /tmp/secreto-raro
+docker exec "$RADIUS" rm -f /tmp/secreto /tmp/secreto-malo /tmp/secreto-raro /tmp/secreto-b
 api DELETE /api/sesion
-docker compose exec -T postgres psql -q -U radiuscontrol -d radiuscontrol -c     "DELETE FROM autenticaciones WHERE router_nombre LIKE '$ROUTER_PRUEBA%' OR usuario IN ('$USUARIO_PRUEBA', 'no-existe', 'DEFAULT'); DELETE FROM operadores WHERE usuario = '$ADMIN_PRUEBA'; DELETE FROM intentos_ip WHERE ip IN ('$IP_PRUEBA', '$IP_ATACANTE', '$IP_PUBLICA') OR ip LIKE '192.0.2.2%'; DELETE FROM auditoria WHERE ip LIKE '192.0.2.2%' OR operador IN ('operador-bloqueo-automatica', 'operador-sesiones-automatica') OR objeto IN ('operador-bloqueo-automatica', 'operador-sesiones-automatica', 'todas las demás'); DELETE FROM auditoria WHERE operador IN ('$OPERADOR_PRUEBA', '$ADMIN_PRUEBA', 'prueba-direccion-fingida', 'usuario-que-no-existe') OR ip IN ('$IP_PRUEBA', '$IP_ATACANTE') OR objeto IN ('$IP_ATACANTE', '$IP_PRUEBA') OR objeto = '$ADMIN_PRUEBA' OR objeto IN ('$OPERADOR_PRUEBA', 'Empresa de prueba') OR objeto LIKE '$ROUTER_PRUEBA%'; DELETE FROM empresas e WHERE e.nombre = 'Empresa de prueba' AND NOT EXISTS (SELECT 1 FROM routers r WHERE r.empresa_id = e.id)" >/dev/null 2>&1
+docker compose exec -T postgres psql -q -U radiuscontrol -d radiuscontrol -c     "DELETE FROM autenticaciones WHERE router_nombre LIKE '$ROUTER_PRUEBA%' OR usuario LIKE '$USUARIO_PRUEBA%' OR usuario IN ('no-existe', 'DEFAULT'); DELETE FROM operadores WHERE usuario = '$ADMIN_PRUEBA'; DELETE FROM intentos_ip WHERE ip IN ('$IP_PRUEBA', '$IP_ATACANTE', '$IP_PUBLICA') OR ip LIKE '192.0.2.2%'; DELETE FROM auditoria WHERE ip LIKE '192.0.2.2%' OR operador IN ('operador-bloqueo-automatica', 'operador-sesiones-automatica') OR objeto IN ('operador-bloqueo-automatica', 'operador-sesiones-automatica', 'todas las demás'); DELETE FROM auditoria WHERE operador IN ('$OPERADOR_PRUEBA', '$ADMIN_PRUEBA', 'prueba-direccion-fingida', 'usuario-que-no-existe') OR ip IN ('$IP_PRUEBA', '$IP_ATACANTE') OR objeto IN ('$IP_ATACANTE', '$IP_PRUEBA') OR objeto = '$ADMIN_PRUEBA' OR objeto IN ('$OPERADOR_PRUEBA', 'Empresa de prueba') OR objeto LIKE '$ROUTER_PRUEBA%' OR objeto LIKE '$USUARIO_PRUEBA%' OR (accion = 'accesos.cambio_masivo' AND operador = '$ADMIN_PRUEBA'); DELETE FROM empresas e WHERE e.nombre IN ('Empresa de prueba', '$EMPRESA_ACCESOS') AND NOT EXISTS (SELECT 1 FROM routers r WHERE r.empresa_id = e.id)" >/dev/null 2>&1
 
 anotar ""
 anotar "Evidencia: $EVIDENCIA"

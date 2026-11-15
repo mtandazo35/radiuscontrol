@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -23,6 +24,9 @@ type Router struct {
 	SecretoRotado time.Time `json:"secreto_rotado"`
 	ExigirMA      bool      `json:"exigir_message_authenticator"`
 	Creado        time.Time `json:"creado"`
+	// Modo de acceso y usuarios asignados; ver accesos.go.
+	Acceso  string         `json:"acceso"`
+	Accesos []AccesoRouter `json:"accesos"`
 }
 
 type routerEntrada struct {
@@ -33,6 +37,9 @@ type routerEntrada struct {
 	Redes       []string `json:"redes"`
 	Secreto     string   `json:"secreto"`
 	ExigirMA    *bool    `json:"exigir_message_authenticator"`
+	// Acceso vacío y Accesos ausente (nil) significan «sin cambios».
+	Acceso  string           `json:"acceso"`
+	Accesos *[]accesoEntrada `json:"accesos"`
 }
 
 var reNombreRouter = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9 ._-]{0,62}$`)
@@ -108,15 +115,27 @@ func (a *App) scriptRouter(secreto string) string {
 const consultaRouters = `
 	SELECT r.id, r.nombre, r.descripcion, r.activo, r.secreto_rotado,
 	       r.exigir_message_authenticator, r.creado, COALESCE(e.nombre, ''),
-	       COALESCE(array_agg(text(rr.red) ORDER BY rr.red) FILTER (WHERE rr.id IS NOT NULL), '{}')
+	       COALESCE(array_agg(text(rr.red) ORDER BY rr.red) FILTER (WHERE rr.id IS NOT NULL), '{}'),
+	       r.acceso,
+	       (SELECT COALESCE(json_agg(json_build_object('usuario_id', ra.usuario_id,
+	               'usuario', u.usuario, 'grupo', ra.grupo) ORDER BY lower(u.usuario)), '[]')::text
+	        FROM router_accesos ra JOIN usuarios_mikrotik u ON u.id = ra.usuario_id
+	        WHERE ra.router_id = r.id)
 	FROM routers r LEFT JOIN router_redes rr ON rr.router_id = r.id
 	LEFT JOIN empresas e ON e.id = r.empresa_id`
 
 func leerRouter(fila pgx.Row) (*Router, error) {
 	var r Router
+	var accesos string
 	if err := fila.Scan(&r.ID, &r.Nombre, &r.Descripcion, &r.Activo, &r.SecretoRotado,
-		&r.ExigirMA, &r.Creado, &r.Empresa, &r.Redes); err != nil {
+		&r.ExigirMA, &r.Creado, &r.Empresa, &r.Redes, &r.Acceso, &accesos); err != nil {
 		return nil, err
+	}
+	if err := json.Unmarshal([]byte(accesos), &r.Accesos); err != nil {
+		return nil, fmt.Errorf("accesos del router %d: %w", r.ID, err)
+	}
+	if r.Accesos == nil {
+		r.Accesos = []AccesoRouter{}
 	}
 	return &r, nil
 }
@@ -272,6 +291,13 @@ func (a *App) crearRouter(w http.ResponseWriter, r *http.Request, op *Operador) 
 	if err != nil {
 		return err
 	}
+	if err := validarAccesos(&in); err != nil {
+		return err
+	}
+	acceso := in.Acceso
+	if acceso == "" {
+		acceso = accesoGeneral
+	}
 	secreto, generado := in.Secreto, false
 	if secreto == "" {
 		secreto, generado = aleatorioHex(24), true
@@ -287,27 +313,36 @@ func (a *App) crearRouter(w http.ResponseWriter, r *http.Request, op *Operador) 
 
 	ctx := r.Context()
 	var id int64
+	asignaciones := 0
 	err = pgx.BeginFunc(ctx, a.db, func(tx pgx.Tx) error {
 		empresaID, err := idEmpresa(ctx, tx, in.Empresa)
 		if err != nil {
 			return err
 		}
 		if err := tx.QueryRow(ctx, `INSERT INTO routers
-			(nombre, descripcion, activo, secreto_cifrado, exigir_message_authenticator, empresa_id)
-			VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-			in.Nombre, in.Descripcion, activo, cifrado, exigir, empresaID).Scan(&id); err != nil {
+			(nombre, descripcion, activo, secreto_cifrado, exigir_message_authenticator, empresa_id, acceso)
+			VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+			in.Nombre, in.Descripcion, activo, cifrado, exigir, empresaID, acceso).Scan(&id); err != nil {
 			if errorPG(err, "23505") {
 				return conflicto("Ya existe un router con ese nombre.")
 			}
 			return err
 		}
-		return guardarRedes(ctx, tx, id, redes)
+		if err := guardarRedes(ctx, tx, id, redes); err != nil {
+			return err
+		}
+		if in.Accesos != nil {
+			asignaciones = len(*in.Accesos)
+			return guardarAccesos(ctx, tx, id, *in.Accesos)
+		}
+		return nil
 	})
 	if err != nil {
 		return err
 	}
 	a.auditar(ctx, op.Usuario, ipCliente(r), "router.creado", in.Nombre,
-		map[string]any{"empresa": in.Empresa, "redes": len(redes), "secreto_generado": generado})
+		map[string]any{"empresa": in.Empresa, "redes": len(redes), "secreto_generado": generado,
+			"acceso": acceso, "asignaciones": asignaciones})
 	ro, err := a.routerPorID(ctx, id)
 	if err != nil {
 		return err
@@ -337,34 +372,50 @@ func (a *App) editarRouter(w http.ResponseWriter, r *http.Request, op *Operador)
 	if in.Secreto != "" {
 		return malo("El secreto se cambia con la acción de rotar, no al editar.")
 	}
+	if err := validarAccesos(&in); err != nil {
+		return err
+	}
 	activo := in.Activo == nil || *in.Activo
 	exigir := in.ExigirMA == nil || *in.ExigirMA
 
 	ctx := r.Context()
+	var acceso string
+	var asignaciones int
 	err = pgx.BeginFunc(ctx, a.db, func(tx pgx.Tx) error {
 		empresaID, err := idEmpresa(ctx, tx, in.Empresa)
 		if err != nil {
 			return err
 		}
-		ct, err := tx.Exec(ctx, `UPDATE routers SET nombre = $2, descripcion = $3, activo = $4,
-			exigir_message_authenticator = $5, empresa_id = $6, actualizado = now() WHERE id = $1`,
-			id, in.Nombre, in.Descripcion, activo, exigir, empresaID)
+		// Sin modo en la solicitud, el router conserva el que tenía.
+		err = tx.QueryRow(ctx, `UPDATE routers SET nombre = $2, descripcion = $3, activo = $4,
+			exigir_message_authenticator = $5, empresa_id = $6,
+			acceso = CASE WHEN $7::text = '' THEN acceso ELSE $7::text END,
+			actualizado = now() WHERE id = $1 RETURNING acceso`,
+			id, in.Nombre, in.Descripcion, activo, exigir, empresaID, in.Acceso).Scan(&acceso)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return noEncontrado()
+		}
 		if err != nil {
 			if errorPG(err, "23505") {
 				return conflicto("Ya existe un router con ese nombre.")
 			}
 			return err
 		}
-		if ct.RowsAffected() == 0 {
-			return noEncontrado()
+		if err := guardarRedes(ctx, tx, id, redes); err != nil {
+			return err
 		}
-		return guardarRedes(ctx, tx, id, redes)
+		if in.Accesos != nil {
+			if err := guardarAccesos(ctx, tx, id, *in.Accesos); err != nil {
+				return err
+			}
+		}
+		return tx.QueryRow(ctx, `SELECT count(*) FROM router_accesos WHERE router_id = $1`, id).Scan(&asignaciones)
 	})
 	if err != nil {
 		return err
 	}
 	a.auditar(ctx, op.Usuario, ipCliente(r), "router.editado", in.Nombre,
-		map[string]any{"redes": len(redes), "activo": activo})
+		map[string]any{"redes": len(redes), "activo": activo, "acceso": acceso, "asignaciones": asignaciones})
 	ro, err := a.routerPorID(ctx, id)
 	if err != nil {
 		return err

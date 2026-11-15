@@ -101,6 +101,31 @@ export interface Router {
   secreto_rotado: string;
   exigir_message_authenticator: boolean;
   creado: string;
+  // general: entran todos los usuarios activos con su grupo general.
+  // restringido: solo los de «accesos», con el grupo que tengan ahí.
+  acceso: ModoAcceso;
+  accesos: AccesoRouter[];
+}
+
+export type ModoAcceso = "general" | "restringido";
+
+export interface AccesoRouter {
+  usuario_id: number;
+  usuario: string;
+  grupo: string;
+}
+
+export interface CambioMasivoAccesos {
+  routers: { todos: boolean; empresa: string; ids: number[] };
+  usuarios: number[];
+  accion: "asignar" | "quitar" | "modo";
+  grupo: string;
+  modo: "" | ModoAcceso;
+}
+
+export interface ResultadoCambioMasivo {
+  routers: number;
+  asignaciones: number;
 }
 
 export interface RespuestaRouter {

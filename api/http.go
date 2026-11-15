@@ -28,8 +28,8 @@ type Operador struct {
 	Rol      string `json:"rol"`
 	TOTP     bool   `json:"totp"`
 	// Para la cuenta atrás del panel.
-	Expira            time.Time `json:"expira"`
-	MinutosInactivo   int       `json:"minutos_inactividad"`
+	Expira          time.Time `json:"expira"`
+	MinutosInactivo int       `json:"minutos_inactividad"`
 }
 
 type errHTTP struct {

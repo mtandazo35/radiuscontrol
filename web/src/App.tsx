@@ -13,6 +13,7 @@ import Login from "./pages/Login";
 import Routers from "./pages/Routers";
 import Seguridad from "./pages/Seguridad";
 import Usuarios from "./pages/Usuarios";
+import { VERSION } from "./version";
 
 const secciones = [
   { ruta: "/routers", texto: "Routers", icono: IconoRouter },
@@ -74,15 +75,17 @@ function BotonAplicar() {
   );
 }
 
-// Versión instalada, al pie del menú lateral. Solo la conocen los administradores.
-function VersionInstalada() {
+// Pie del menú lateral, al fondo y para todos los roles. El identificador de
+// la versión instalada solo lo conocen los administradores: va como ayuda
+// emergente de la línea de versión.
+function PieMenu() {
   const act = useActualizacion();
   const instalado = act.datos?.busqueda?.instalado;
-  if (!instalado) return null;
   return (
-    <p className="hidden px-4 py-3 text-xs text-muted-foreground md:block">
-      Versión <span className="font-mono">{versionCorta(instalado)}</span>
-    </p>
+    <div className="mt-auto hidden space-y-0.5 px-4 py-3 text-xs text-muted-foreground md:block">
+      <p title={instalado ? `Instalada: ${versionCorta(instalado)}` : undefined}>Versión {VERSION}</p>
+      <p>Desarrollado por MAAT</p>
+    </div>
   );
 }
 
@@ -96,7 +99,8 @@ function Marco({ children }: { children: React.ReactNode }) {
   };
   return (
     <div className="min-h-screen md:flex">
-      <aside className="border-b bg-card md:min-h-screen md:w-60 md:shrink-0 md:border-b-0 md:border-r">
+      {/* En escritorio el menú queda fijo a la altura de la ventana, con el pie al fondo. */}
+      <aside className="border-b bg-card md:sticky md:top-0 md:flex md:h-screen md:w-60 md:shrink-0 md:flex-col md:self-start md:overflow-y-auto md:border-b-0 md:border-r">
         <div className="flex items-center gap-2 px-4 py-4">
           <ShieldCheck className="size-5 text-primary" />
           <span className="font-semibold tracking-tight">RadiusControl</span>
@@ -118,7 +122,7 @@ function Marco({ children }: { children: React.ReactNode }) {
             </NavLink>
           ))}
         </nav>
-        <VersionInstalada />
+        <PieMenu />
       </aside>
       <div className="min-w-0 flex-1">
         <header className="flex flex-wrap items-center justify-end gap-2 border-b bg-card px-4 py-2.5">

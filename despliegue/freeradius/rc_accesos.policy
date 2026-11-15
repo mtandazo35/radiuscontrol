@@ -1,0 +1,21 @@
+# Política de RadiusControl para los accesos por router.
+#
+# Cada usuario lleva su identificador en control:Tmp-Integer-0 (archivo
+# authorize) y cada router restringido lleva una línea «rc_u_<id> = <grupo>»
+# por usuario con acceso (clients.conf). Quien no tiene línea es rechazado; quien
+# la tiene recibe el grupo de ese router en lugar del general.
+rc_accesos {
+	if ("%{client:rc_acceso}" == "restringido") {
+		if ("%{client:rc_u_%{control:Tmp-Integer-0}}" == "") {
+			update request {
+				&Module-Failure-Message += "El usuario no tiene acceso a este router"
+			}
+			reject
+		}
+		else {
+			update reply {
+				&Mikrotik-Group := "%{client:rc_u_%{control:Tmp-Integer-0}}"
+			}
+		}
+	}
+}

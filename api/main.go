@@ -133,6 +133,9 @@ func main() {
 
 	go app.bucleRegistro(ctx)
 	go app.bucleSesiones(ctx)
+	// Al arrancar se aplica lo que haya pendiente. Tras una actualización, el
+	// formato de la configuración compilada puede haber cambiado.
+	app.programarAplicar("sistema")
 
 	srv := &http.Server{
 		Addr:              ":8080",
@@ -324,6 +327,7 @@ func (a *App) rutas() http.Handler {
 	m.HandleFunc("PUT /api/routers/{id}", cambia(a.editarRouter))
 	m.HandleFunc("DELETE /api/routers/{id}", cambia(a.borrarRouter))
 	m.HandleFunc("POST /api/routers/{id}/secreto", cambia(a.rotarSecreto))
+	m.HandleFunc("POST /api/accesos/masivo", cambia(a.cambioMasivo))
 
 	m.HandleFunc("GET /api/empresas", a.privado(a.listarEmpresas))
 	m.HandleFunc("GET /api/autenticaciones", a.privado(a.listarAutenticaciones))

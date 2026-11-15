@@ -1,7 +1,8 @@
-import { Plus } from "lucide-react";
+import { Plus, Users } from "lucide-react";
 import * as React from "react";
+import { accesosDe, BloqueAccesos, CambiosMasivos, permisosDe, type Permisos } from "@/components/Accesos";
 import { Badge, Button, Card, Dialog, DialogContent, DialogFooter, Input, Label, Table, Td, Textarea, Th } from "@/components/ui";
-import { api, type Empresa, type RespuestaRouter, type Router } from "@/lib/api";
+import { api, type Empresa, type ModoAcceso, type RespuestaRouter, type Router, type Usuario } from "@/lib/api";
 import { fecha } from "@/lib/utils";
 import { useApp } from "../contexto";
 
@@ -14,9 +15,37 @@ interface Formulario {
   secreto: string;
   exigir: boolean;
   activo: boolean;
+  acceso: ModoAcceso;
+  // Modo con el que se abrió el formulario, para avisar si pasa a restringido.
+  accesoInicial: ModoAcceso;
+  // Usuarios marcados y su permiso en este router.
+  permisos: Permisos;
 }
 
-const vacio: Formulario = { id: null, nombre: "", empresa: "", descripcion: "", redes: "", secreto: "", exigir: true, activo: true };
+const vacio: Formulario = {
+  id: null,
+  nombre: "",
+  empresa: "",
+  descripcion: "",
+  redes: "",
+  secreto: "",
+  exigir: true,
+  activo: true,
+  acceso: "general",
+  accesoInicial: "general",
+  permisos: {},
+};
+
+function InsigniaAcceso({ r }: { r: Router }) {
+  if (r.acceso !== "restringido") return <Badge variant="muted">General</Badge>;
+  const n = r.accesos?.length ?? 0;
+  if (n === 0) return <Badge variant="warning">Restringido · nadie entra</Badge>;
+  return (
+    <Badge title={r.accesos.map((a) => `${a.usuario} (${a.grupo})`).join(", ")}>
+      Restringido · {n === 1 ? "1 usuario" : `${n} usuarios`}
+    </Badge>
+  );
+}
 
 export default function Routers() {
   const { avisar, avisarError, confirmar, refrescarEstado } = useApp();
@@ -24,11 +53,14 @@ export default function Routers() {
   const [form, setForm] = React.useState<Formulario | null>(null);
   const [ocupado, setOcupado] = React.useState(false);
   const [empresas, setEmpresas] = React.useState<Empresa[]>([]);
+  const [usuarios, setUsuarios] = React.useState<Usuario[] | null>(null);
+  const [masivo, setMasivo] = React.useState(false);
 
   const cargar = React.useCallback(async () => {
     try {
       setLista(await api<Router[]>("GET", "/routers"));
       setEmpresas(await api<Empresa[]>("GET", "/empresas"));
+      setUsuarios(await api<Usuario[]>("GET", "/usuarios"));
     } catch (e) {
       avisarError(e);
     }
@@ -55,8 +87,25 @@ export default function Routers() {
 
   const guardar = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form) return;
+    if (!form || ocupado) return;
+    const restringido = form.acceso === "restringido";
+    const accesos = accesosDe(form.permisos);
+    if (form.id !== null && restringido && form.accesoInicial === "general") {
+      const ok = await confirmar(
+        "Pasar a acceso restringido",
+        accesos.length === 0
+          ? `No has marcado a ningún usuario: en unos segundos nadie podrá entrar a «${form.nombre}» por RADIUS.`
+          : `En unos segundos solo ${accesos.length === 1 ? "podrá entrar a" : "podrán entrar a"} «${form.nombre}» ${
+              accesos.length === 1 ? "el usuario marcado" : `los ${accesos.length} usuarios marcados`
+            }, con el permiso elegido aquí. Los demás usuarios dejarán de entrar por RADIUS.`,
+        "Restringir el acceso",
+        true,
+      );
+      if (!ok) return;
+    }
     setOcupado(true);
+    // En modo general no se envía la lista: el servidor conserva la que había
+    // por si el router vuelve a restringirse.
     const cuerpo = {
       nombre: form.nombre,
       empresa: form.empresa,
@@ -64,6 +113,8 @@ export default function Routers() {
       redes: form.redes.split(/[\n,]+/).map((x) => x.trim()).filter(Boolean),
       activo: form.activo,
       exigir_message_authenticator: form.exigir,
+      acceso: form.acceso,
+      ...(restringido ? { accesos } : {}),
       ...(form.id === null && form.secreto ? { secreto: form.secreto } : {}),
     };
     try {
@@ -133,9 +184,14 @@ export default function Routers() {
             Cada router se identifica por la dirección de origen de sus paquetes y tiene su propio secreto. El firewall del servidor solo deja pasar al puerto RADIUS las redes de los routers activos.
           </p>
         </div>
-        <Button onClick={() => setForm(vacio)}>
-          <Plus /> Nuevo router
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => setMasivo(true)}>
+            <Users /> Cambios masivos
+          </Button>
+          <Button onClick={() => setForm(vacio)}>
+            <Plus /> Nuevo router
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -146,6 +202,7 @@ export default function Routers() {
               <Th>Empresa</Th>
               <Th>Redes de origen</Th>
               <Th>Estado</Th>
+              <Th>Acceso</Th>
               <Th>Secreto rotado</Th>
               <Th className="text-right">Acciones</Th>
             </tr>
@@ -153,7 +210,7 @@ export default function Routers() {
           <tbody>
             {lista?.length === 0 && (
               <tr>
-                <Td colSpan={6} className="py-10 text-center text-muted-foreground">
+                <Td colSpan={7} className="py-10 text-center text-muted-foreground">
                   Todavía no hay routers. Crea el primero con «Nuevo router».
                 </Td>
               </tr>
@@ -176,6 +233,9 @@ export default function Routers() {
                     {!r.exigir_message_authenticator && <Badge variant="warning">Sin Message-Authenticator</Badge>}
                   </div>
                 </Td>
+                <Td>
+                  <InsigniaAcceso r={r} />
+                </Td>
                 <Td className="whitespace-nowrap text-muted-foreground">{fecha(r.secreto_rotado)}</Td>
                 <Td>
                   <div className="flex flex-wrap justify-end gap-1">
@@ -192,6 +252,9 @@ export default function Routers() {
                           secreto: "",
                           exigir: r.exigir_message_authenticator,
                           activo: r.activo,
+                          acceso: r.acceso === "restringido" ? "restringido" : "general",
+                          accesoInicial: r.acceso === "restringido" ? "restringido" : "general",
+                          permisos: permisosDe(r.accesos),
                         })
                       }
                     >
@@ -216,7 +279,7 @@ export default function Routers() {
 
       <Dialog open={form !== null} onOpenChange={(abierto) => !abierto && setForm(null)}>
         {form && (
-          <DialogContent titulo={form.id === null ? "Nuevo router" : "Editar router"}>
+          <DialogContent className="max-w-2xl" titulo={form.id === null ? "Nuevo router" : "Editar router"}>
             <form onSubmit={guardar} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="nombre">Nombre</Label>
@@ -270,6 +333,13 @@ export default function Routers() {
                   </span>
                 </span>
               </label>
+              <BloqueAccesos
+                modo={form.acceso}
+                onModo={(acceso) => setForm({ ...form, acceso })}
+                usuarios={usuarios}
+                permisos={form.permisos}
+                onPermisos={(permisos) => setForm({ ...form, permisos })}
+              />
               <DialogFooter>
                 <Button variant="outline" onClick={() => setForm(null)}>
                   Cancelar
@@ -282,6 +352,15 @@ export default function Routers() {
           </DialogContent>
         )}
       </Dialog>
+
+      <CambiosMasivos
+        abierto={masivo}
+        onCerrar={() => setMasivo(false)}
+        routers={lista ?? []}
+        empresas={empresas}
+        usuarios={usuarios}
+        onHecho={tras}
+      />
     </div>
   );
 }
