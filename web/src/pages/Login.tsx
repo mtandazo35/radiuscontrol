@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Check, CircleAlert, Clock, Eye, EyeOff, KeyRound, LoaderCircle, Lock, Moon, ShieldCheck, Sun, User } from "lucide-react";
+import { Check, CircleAlert, Clock, Eye, EyeOff, KeyRound, LoaderCircle, Lock, Moon, Sun, User } from "lucide-react";
 import { Button, Input, Label } from "@/components/ui";
 import { api, ErrorApi, type Operador } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -80,7 +80,7 @@ function Diagrama({ fase }: { fase: Fase }) {
           {f.texto}
         </span>
         {f.termino && (
-          <span className="mt-1 block text-sm" style={{ color: tinta.tenue }}>
+          <span className="mt-1 block text-base" style={{ color: tinta.tenue }}>
             En RADIUS esto se llama {f.termino}.
           </span>
         )}
@@ -142,7 +142,7 @@ export default function Login() {
   };
 
   return (
-    <div className="grid min-h-screen lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
+    <div className="grid min-h-screen font-cuerpo lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
       <section
         className="flex flex-col justify-between gap-8 px-6 py-8 sm:px-10 lg:px-14 lg:py-12"
         style={{ backgroundColor: tinta.fondo, color: tinta.texto }}
@@ -153,7 +153,7 @@ export default function Login() {
           <Diagrama fase={fase} />
         </div>
 
-        <p className="hidden max-w-sm text-sm leading-relaxed lg:block" style={{ color: tinta.tenue }}>
+        <p className="hidden max-w-sm text-base leading-relaxed lg:block" style={{ color: tinta.tenue }}>
           Decide quién entra a cada router MikroTik, con qué permiso y desde dónde.
         </p>
       </section>
@@ -173,11 +173,11 @@ export default function Login() {
 
         <div className="w-full max-w-md">
           <div className="rounded-xl border border-t-4 border-t-primary bg-card p-6 sm:p-9">
-            <h1 className="font-titulo text-4xl font-semibold tracking-tight">Entrar al panel</h1>
-            <p className="mt-2 text-base text-muted-foreground">Usa tu cuenta de operador.</p>
+            <h1 className="font-titulo text-[2.75rem] font-semibold leading-none">Entrar al panel</h1>
+            <p className="mt-3 text-lg text-muted-foreground">Usa tu cuenta de operador.</p>
 
             {motivoSalida && (
-              <p role="status" className="mt-6 flex gap-2.5 rounded-md border border-warning bg-background p-3 text-sm text-warning">
+              <p role="status" className="mt-6 flex gap-2.5 rounded-md border border-warning bg-background p-3 text-base text-warning">
                 <Clock className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
                 <span>{motivoSalida}</span>
               </p>
@@ -185,14 +185,14 @@ export default function Login() {
 
             <form onSubmit={entrar} className="mt-8 space-y-5">
               <div className="space-y-2">
-                <Label htmlFor="usuario" className="text-sm font-medium">
+                <Label htmlFor="usuario" className="text-base font-medium">
                   Usuario
                 </Label>
                 <div className="relative">
                   <User className="pointer-events-none absolute left-3.5 top-1/2 size-[18px] -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
                   <Input
                     id="usuario"
-                    className="h-12 bg-background pl-11 text-base"
+                    className="h-12 bg-background pl-11 text-[17px]"
                     autoComplete="username"
                     autoCapitalize="none"
                     spellCheck={false}
@@ -205,14 +205,14 @@ export default function Login() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="clave" className="text-sm font-medium">
+                <Label htmlFor="clave" className="text-base font-medium">
                   Contraseña
                 </Label>
                 <div className="relative">
                   <Lock className="pointer-events-none absolute left-3.5 top-1/2 size-[18px] -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
                   <Input
                     id="clave"
-                    className="h-12 bg-background pl-11 pr-12 text-base"
+                    className="h-12 bg-background pl-11 pr-12 text-[17px]"
                     type={verClave ? "text" : "password"}
                     autoComplete="current-password"
                     required
@@ -241,14 +241,14 @@ export default function Login() {
 
               {pideCodigo && (
                 <div className="space-y-2">
-                  <Label htmlFor="codigo" className="text-sm font-medium">
+                  <Label htmlFor="codigo" className="text-base font-medium">
                     Código de verificación
                   </Label>
                   <div className="relative">
                     <KeyRound className="pointer-events-none absolute left-3.5 top-1/2 size-[18px] -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
                     <Input
                       id="codigo"
-                      className="h-12 bg-background pl-11 text-base tracking-[0.3em]"
+                      className="h-12 bg-background pl-11 text-[17px] tracking-[0.3em]"
                       inputMode="numeric"
                       autoComplete="one-time-code"
                       autoFocus
@@ -263,7 +263,7 @@ export default function Login() {
               )}
 
               {error && (
-                <p role="alert" className="flex gap-2.5 rounded-md border border-destructive bg-background p-3 text-sm text-destructive">
+                <p role="alert" className="flex gap-2.5 rounded-md border border-destructive bg-background p-3 text-base text-destructive">
                   <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
                   <span>{error}</span>
                 </p>
@@ -271,7 +271,7 @@ export default function Login() {
 
               <Button
                 type="submit"
-                className={cn("h-12 w-full gap-2 text-base font-semibold", fase === "aceptado" && "bg-success hover:bg-success")}
+                className={cn("h-12 w-full gap-2 font-titulo text-lg font-semibold tracking-wide", fase === "aceptado" && "bg-success hover:bg-success")}
                 disabled={ocupado}
               >
                 {fase === "enviando" && <LoaderCircle className="size-[18px] animate-spin motion-reduce:animate-none" aria-hidden="true" />}
@@ -280,17 +280,9 @@ export default function Login() {
               </Button>
             </form>
           </div>
-
-          <p className="mt-5 flex gap-2.5 px-1 text-sm leading-relaxed text-muted-foreground">
-            <ShieldCheck className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-            <span>
-              El acceso se bloquea tras varios intentos fallidos. Si olvidaste tu contraseña, pide a un administrador que la
-              restablezca.
-            </span>
-          </p>
         </div>
 
-        <p className="flex w-full max-w-md justify-between gap-4 px-1 text-xs text-muted-foreground">
+        <p className="flex w-full max-w-md justify-between gap-4 px-1 text-sm text-muted-foreground">
           <span>Versión {VERSION}</span>
           <span>Desarrollado por MAAT</span>
         </p>
