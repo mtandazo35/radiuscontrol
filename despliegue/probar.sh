@@ -310,7 +310,7 @@ comprobar "Base: el volcado no contiene el secreto, la contraseña ni el hash NT
 docker compose stop api postgres >/dev/null 2>&1
 S="$(radius 127.0.0.1 /tmp/secreto "$PAP_OK")"
 comprobar "Independencia: con la API y la base detenidas, FreeRADIUS sigue autenticando" \
-    "$(printf '%s' "$S" | grep -q 'Received Access-Accept'; echo $?)"
+    "$(printf '%s' "$S" | grep -q 'Received Access-Accept'; echo $?)" "$(printf '%s' "$S" | grep -E 'Received|No reply|rror' | tail -2)"
 docker compose restart freeradius >/dev/null 2>&1
 sleep 5
 S="$(radius 127.0.0.1 /tmp/secreto "$PAP_OK")"
