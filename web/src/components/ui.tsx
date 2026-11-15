@@ -1,7 +1,7 @@
 // Componentes base al estilo de shadcn/ui (Radix + Tailwind + variantes).
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { cva, type VariantProps } from "class-variance-authority";
-import { X } from "lucide-react";
+import { Check, Copy, X } from "lucide-react";
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
@@ -58,21 +58,25 @@ export function Label({ className, ...props }: React.LabelHTMLAttributes<HTMLLab
 }
 
 export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("rounded-lg border bg-card text-card-foreground shadow-sm", className)} {...props} />;
+  return <div className={cn("rounded-lg border bg-card text-card-foreground", className)} {...props} />;
 }
 
-const badgeVariants = cva("inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium", {
+// Píldora translúcida con un punto del color del estado.
+const badgeVariants = cva(
+  "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold before:size-1.5 before:shrink-0 before:rounded-full before:bg-current before:content-['']",
+  {
   variants: {
     variant: {
-      default: "border-transparent bg-accent text-accent-foreground",
-      success: "border-success/40 text-success",
-      warning: "border-warning/50 text-warning",
-      destructive: "border-destructive/50 text-destructive",
-      muted: "border-border text-muted-foreground",
+      default: "border-primary/20 bg-primary/10 text-primary",
+      success: "border-success/20 bg-success/10 text-success",
+      warning: "border-warning/25 bg-warning/10 text-warning",
+      destructive: "border-destructive/20 bg-destructive/10 text-destructive",
+      muted: "border-border bg-muted text-muted-foreground",
     },
   },
   defaultVariants: { variant: "default" },
-});
+  },
+);
 
 export function Badge({
   className,
@@ -85,20 +89,50 @@ export function Badge({
 export function Table({ className, ...props }: React.TableHTMLAttributes<HTMLTableElement>) {
   return (
     <div className="w-full overflow-x-auto">
-      <table className={cn("w-full caption-bottom text-sm", className)} {...props} />
+      <table className={cn("w-full caption-bottom text-sm [&_tbody_tr:hover]:bg-muted/50 [&_tbody_tr]:transition-colors", className)} {...props} />
     </div>
   );
 }
 export function Th({ className, ...props }: React.ThHTMLAttributes<HTMLTableCellElement>) {
   return (
     <th
-      className={cn("h-10 whitespace-nowrap px-4 text-left align-middle text-xs font-medium text-muted-foreground", className)}
+      className={cn("h-9 whitespace-nowrap bg-muted/40 px-4 text-left align-middle text-[11px] font-semibold uppercase tracking-wider text-muted-foreground first:rounded-tl-lg last:rounded-tr-lg", className)}
       {...props}
     />
   );
 }
 export function Td({ className, ...props }: React.TdHTMLAttributes<HTMLTableCellElement>) {
-  return <td className={cn("border-t px-4 py-3 align-middle", className)} {...props} />;
+  return <td className={cn("border-t px-4 py-2.5 align-middle", className)} {...props} />;
+}
+
+// Dato técnico (IP, red) con un botón para copiarlo que aparece al pasar el
+// ratón o al llegar con el teclado; en pantallas táctiles está siempre.
+export function Copiable({ texto, className }: { texto: string | null | undefined; className?: string }) {
+  const [hecho, setHecho] = React.useState(false);
+  if (!texto) return <span className={className}>—</span>;
+  const copiar = async () => {
+    try {
+      await navigator.clipboard.writeText(texto);
+      setHecho(true);
+      window.setTimeout(() => setHecho(false), 1500);
+    } catch {
+      // Sin permiso para el portapapeles: el texto sigue ahí para seleccionarlo.
+    }
+  };
+  return (
+    <span className={cn("group/copia inline-flex items-center gap-1 font-mono", className)}>
+      <span className="break-all">{texto}</span>
+      <button
+        type="button"
+        onClick={copiar}
+        aria-label={hecho ? "Copiado" : `Copiar ${texto}`}
+        title={hecho ? "Copiado" : "Copiar"}
+        className="rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover/copia:opacity-100 [@media(hover:none)]:opacity-100"
+      >
+        {hecho ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />}
+      </button>
+    </span>
+  );
 }
 
 export const Dialog = DialogPrimitive.Root;

@@ -1,6 +1,6 @@
 import { Plus, UserCog } from "lucide-react";
 import * as React from "react";
-import { Badge, Button, Card, Dialog, DialogContent, DialogFooter, Input, Label, Paginacion, Table, Td, Th } from "@/components/ui";
+import { Badge, Button, Card, Dialog, DialogContent, DialogFooter, Input, Label, Paginacion, Table, Td, Th, Copiable } from "@/components/ui";
 import { api, type Bloqueos as DatosBloqueos, type OperadorDetalle, type PaginaEventos, type Sesion } from "@/lib/api";
 import { ModalMiCuenta, nombreRol } from "@/components/MiCuenta";
 import { BotonVaciar } from "@/components/Vaciar";
@@ -359,7 +359,9 @@ function Sesiones() {
           {lista?.map((s) => (
             <tr key={s.id}>
               <Td className="font-medium">{s.operador}</Td>
-              <Td className="font-mono text-xs">{s.ip}</Td>
+              <Td className="text-xs">
+                <Copiable texto={s.ip} />
+              </Td>
               <Td className="whitespace-nowrap text-muted-foreground">{fecha(s.creada)}</Td>
               <Td className="whitespace-nowrap text-muted-foreground">{fecha(s.ultima_actividad)}</Td>
               <Td className="whitespace-nowrap text-muted-foreground">{fecha(s.expira)}</Td>
@@ -445,7 +447,9 @@ function Bloqueos({ onCambio }: { onCambio: number }) {
               <Td>
                 <Badge variant="destructive">Dirección IP</Badge>
               </Td>
-              <Td className="font-mono text-xs">{b.ip}</Td>
+              <Td className="text-xs">
+                <Copiable texto={b.ip} />
+              </Td>
               <Td>{b.intentos}</Td>
               <Td className="whitespace-nowrap text-muted-foreground">{fecha(b.hasta)}</Td>
               <Td className="text-right">
@@ -557,7 +561,9 @@ function Actividad() {
                 {e.detalle !== "{}" && <div className="max-w-[22rem] truncate font-mono text-xs text-muted-foreground" title={e.detalle}>{e.detalle}</div>}
               </Td>
               <Td>{e.objeto}</Td>
-              <Td className="font-mono text-xs">{e.ip}</Td>
+              <Td className="text-xs">
+                <Copiable texto={e.ip} />
+              </Td>
             </tr>
           ))}
         </tbody>

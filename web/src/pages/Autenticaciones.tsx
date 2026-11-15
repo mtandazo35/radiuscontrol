@@ -1,10 +1,16 @@
 import * as React from "react";
-import { Badge, Card, Input, Paginacion, Table, Td, Th } from "@/components/ui";
+import { Badge, Card, Copiable, Input, Paginacion, Table, Td, Th } from "@/components/ui";
 import { BotonVaciar } from "@/components/Vaciar";
 import { api, type PaginaAutenticaciones } from "@/lib/api";
-import { fecha, motivoLegible } from "@/lib/utils";
+import { cn, fecha, motivoLegible } from "@/lib/utils";
 import { useApp } from "../contexto";
 import { useFiltro } from "../filtro";
+
+const filtros = [
+  { valor: "", texto: "Todos", punto: "" },
+  { valor: "aceptado", texto: "Access-Accept", punto: "bg-success" },
+  { valor: "rechazado", texto: "Access-Reject", punto: "bg-destructive" },
+];
 
 export default function Autenticaciones() {
   const { avisarError } = useApp();
@@ -79,23 +85,32 @@ export default function Autenticaciones() {
             setPagina(1);
           }}
         />
-        <select
-          aria-label="Resultado"
-          className="h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          value={resultado}
-          onChange={(e) => {
-            setResultado(e.target.value);
-            setPagina(1);
-          }}
-        >
-          <option value="">Todos los resultados</option>
-          <option value="aceptado">Aceptados</option>
-          <option value="rechazado">Rechazados</option>
-        </select>
+        <div className="flex rounded-md border bg-card p-0.5" role="group" aria-label="Resultado">
+          {filtros.map((f) => (
+            <button
+              key={f.valor}
+              type="button"
+              aria-pressed={resultado === f.valor}
+              onClick={() => {
+                setResultado(f.valor);
+                setPagina(1);
+              }}
+              className={cn(
+                "flex items-center gap-1.5 rounded px-3 py-1 font-mono text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                resultado === f.valor ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {f.punto && <span className={cn("size-1.5 rounded-full", resultado === f.valor ? "bg-current" : f.punto)} />}
+              {f.texto}
+            </button>
+          ))}
+        </div>
       </div>
 
-      <Card>
-        <Table>
+      {/* Visor de registros: fondo de consola, letra monoespaciada y los
+          rechazos señalados en rojo para que salten a la vista. */}
+      <Card className="overflow-hidden bg-consola">
+        <Table className="font-mono text-xs">
           <thead>
             <tr>
               <Th>Fecha</Th>
@@ -111,40 +126,45 @@ export default function Autenticaciones() {
           <tbody>
             {lista?.length === 0 && (
               <tr>
-                <Td colSpan={8} className="py-10 text-center text-muted-foreground">
+                <Td colSpan={8} className="py-10 text-center font-sans text-sm text-muted-foreground">
                   No hay autenticaciones que coincidan.
                 </Td>
               </tr>
             )}
-            {lista?.map((a) => (
-              <tr key={a.id}>
-                <Td className="whitespace-nowrap text-muted-foreground">{fecha(a.fecha)}</Td>
-                <Td>
-                  <Badge variant={a.resultado === "aceptado" ? "success" : "destructive"}>
-                    {a.resultado === "aceptado" ? "Aceptado" : "Rechazado"}
-                  </Badge>
-                </Td>
-                <Td className="max-w-[14rem] truncate font-medium" title={a.usuario}>
-                  {a.usuario || "—"}
-                </Td>
-                <Td>
-                  <div>{a.router || a.nas_identifier || "—"}</div>
-                  <div className="font-mono text-xs text-muted-foreground">{a.ip_origen}</div>
-                </Td>
-                <Td>{a.empresa || "—"}</Td>
-                <Td className="font-mono text-xs">{a.origen || "—"}</Td>
-                <Td className="whitespace-nowrap">{a.metodo || "—"}</Td>
-                <Td className="max-w-[18rem] text-sm">
-                  {a.resultado === "aceptado" ? (
-                    <span className="font-mono text-xs">{a.grupo || "—"}</span>
-                  ) : (
-                    <span className="text-muted-foreground" title={a.motivo}>
-                      {motivoLegible(a.motivo)}
-                    </span>
-                  )}
-                </Td>
-              </tr>
-            ))}
+            {lista?.map((a) => {
+              const rechazado = a.resultado === "rechazado";
+              return (
+                <tr key={a.id}>
+                  <Td className={cn("whitespace-nowrap border-l-2 py-2 text-muted-foreground", rechazado ? "border-l-destructive" : "border-l-transparent")}>
+                    {fecha(a.fecha)}
+                  </Td>
+                  <Td className="py-2">
+                    <Badge variant={rechazado ? "destructive" : "success"}>{rechazado ? "Access-Reject" : "Access-Accept"}</Badge>
+                  </Td>
+                  <Td className="max-w-[14rem] truncate py-2 font-semibold" title={a.usuario}>
+                    {a.usuario || "—"}
+                  </Td>
+                  <Td className="py-2">
+                    <div className="font-sans text-sm">{a.router || a.nas_identifier || "—"}</div>
+                    <Copiable texto={a.ip_origen} className="text-muted-foreground" />
+                  </Td>
+                  <Td className="py-2 font-sans text-sm">{a.empresa || "—"}</Td>
+                  <Td className="py-2">
+                    <Copiable texto={a.origen} />
+                  </Td>
+                  <Td className="whitespace-nowrap py-2">{a.metodo || "—"}</Td>
+                  <Td className="max-w-[20rem] py-2">
+                    {rechazado ? (
+                      <span className="font-semibold text-destructive" title={a.motivo}>
+                        {motivoLegible(a.motivo)}
+                      </span>
+                    ) : (
+                      <span>{a.grupo || "—"}</span>
+                    )}
+                  </Td>
+                </tr>
+              );
+            })}
           </tbody>
         </Table>
         <Paginacion

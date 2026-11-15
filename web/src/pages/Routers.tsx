@@ -1,7 +1,7 @@
 import { Plus, Users } from "lucide-react";
 import * as React from "react";
 import { accesosDe, BloqueAccesos, CambiosMasivos, permisosDe, type Permisos } from "@/components/Accesos";
-import { Badge, Button, Card, Dialog, DialogContent, DialogFooter, Input, Label, Table, Td, Textarea, Th } from "@/components/ui";
+import { Badge, Button, Card, Dialog, DialogContent, DialogFooter, Input, Label, Table, Td, Textarea, Th, Copiable } from "@/components/ui";
 import { api, type Empresa, type ModoAcceso, type RespuestaRouter, type Router, type Usuario } from "@/lib/api";
 import { fecha } from "@/lib/utils";
 import { useApp } from "../contexto";
@@ -229,7 +229,9 @@ export default function Routers() {
                 <Td className="whitespace-nowrap">{r.empresa || <Badge variant="warning">Sin empresa</Badge>}</Td>
                 <Td className="font-mono text-xs">
                   {r.redes.map((red) => (
-                    <div key={red}>{red}</div>
+                    <div key={red}>
+                      <Copiable texto={red} />
+                    </div>
                   ))}
                 </Td>
                 <Td>
