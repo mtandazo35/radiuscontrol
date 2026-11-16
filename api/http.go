@@ -40,6 +40,9 @@ type errHTTP struct {
 
 func (e *errHTTP) Error() string { return e.msg }
 
+// Tope del texto de búsqueda que llega por la URL.
+const largoBuscar = 100
+
 func malo(msg string) error      { return &errHTTP{codigo: http.StatusBadRequest, msg: msg} }
 func conflicto(msg string) error { return &errHTTP{codigo: http.StatusConflict, msg: msg} }
 func noEncontrado() error {

@@ -91,9 +91,9 @@ func (a *App) cambiarMiClave(w http.ResponseWriter, r *http.Request, op *Operado
 	if err := a.db.QueryRow(ctx, `SELECT clave_hash FROM operadores WHERE id = $1`, op.ID).Scan(&hash); err != nil {
 		return err
 	}
-	if !verificarArgon2(in.Actual, hash) {
+	if err := a.comprobarClaveActual(r, op, in.Actual, hash, "La contraseña actual no es correcta."); err != nil {
 		a.auditar(ctx, op.Usuario, ipCliente(r), "cuenta.clave_rechazada", op.Usuario, nil)
-		return malo("La contraseña actual no es correcta.")
+		return err
 	}
 	if err := validarClavePanel(in.Nueva); err != nil {
 		return err
@@ -191,8 +191,8 @@ func (a *App) desactivarTOTP(w http.ResponseWriter, r *http.Request, op *Operado
 	if err := a.db.QueryRow(ctx, `SELECT clave_hash FROM operadores WHERE id = $1`, op.ID).Scan(&hash); err != nil {
 		return err
 	}
-	if !verificarArgon2(in.Clave, hash) {
-		return malo("La contraseña no es correcta.")
+	if err := a.comprobarClaveActual(r, op, in.Clave, hash, "La contraseña no es correcta."); err != nil {
+		return err
 	}
 	if _, err := a.db.Exec(ctx, `UPDATE operadores SET totp_cifrado = NULL, totp_pendiente_cifrado = NULL,
 		totp_ultimo = 0 WHERE id = $1`, op.ID); err != nil {
@@ -556,6 +556,9 @@ func (a *App) listarAuditoria(w http.ResponseWriter, r *http.Request, _ *Operado
 		pagina = 1
 	}
 	buscar := strings.TrimSpace(q.Get("buscar"))
+	if len(buscar) > largoBuscar {
+		return malo("La búsqueda es demasiado larga.")
+	}
 	const filtro = `$1 = '' OR operador ILIKE '%' || $1 || '%' OR accion ILIKE '%' || $1 || '%'
 		OR objeto ILIKE '%' || $1 || '%' OR ip LIKE $1 || '%'`
 

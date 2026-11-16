@@ -237,6 +237,9 @@ func (a *App) listarAutenticaciones(w http.ResponseWriter, r *http.Request, _ *O
 		return malo("Filtro de resultado no válido.")
 	}
 	buscar := strings.TrimSpace(q.Get("buscar"))
+	if len(buscar) > largoBuscar {
+		return malo("La búsqueda es demasiado larga.")
+	}
 	// 0 = todos los routers.
 	router, _ := strconv.Atoi(q.Get("router"))
 	if router < 0 {

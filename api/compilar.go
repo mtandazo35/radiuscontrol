@@ -583,7 +583,7 @@ func (a *App) ultimoFallo(ctx context.Context, activa *Version) string {
 	return mensaje
 }
 
-func (a *App) verEstado(w http.ResponseWriter, r *http.Request, _ *Operador) error {
+func (a *App) verEstado(w http.ResponseWriter, r *http.Request, op *Operador) error {
 	ctx := r.Context()
 	deseado, err := a.compilarDeseado(ctx)
 	if err != nil {
@@ -626,6 +626,10 @@ func (a *App) verEstado(w http.ResponseWriter, r *http.Request, _ *Operador) err
 	sincronizado := activa != nil && cargado != nil && cargado.Estado == "en-marcha" &&
 		cargado.ShaClients == activa.ShaClients && cargado.ShaAuthorize == activa.ShaAuthorize
 
+	fallo := a.ultimoFallo(ctx, activa)
+	if fallo != "" && op.Rol != rolAdmin {
+		fallo = "El último cambio no se pudo aplicar. Avisa a un administrador."
+	}
 	escribirJSON(w, http.StatusOK, map[string]any{
 		"cambios_pendientes": pendiente,
 		"sincronizado":       sincronizado,
@@ -637,7 +641,7 @@ func (a *App) verEstado(w http.ResponseWriter, r *http.Request, _ *Operador) err
 		"freeradius":      cargado,
 		"firewall":        firewall,
 		"firewall_al_dia": firewallAlDia,
-		"ultimo_fallo":    a.ultimoFallo(ctx, activa),
+		"ultimo_fallo":    fallo,
 	})
 	return nil
 }

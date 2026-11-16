@@ -41,6 +41,8 @@ type App struct {
 	senuelo         string
 	// Tope de verificaciones de contraseña simultáneas (ver verificarLimitado).
 	argon chan struct{}
+	// Fallos al repetir la contraseña con la sesión abierta (ver limite.go).
+	claves limiteClave
 }
 
 func env(clave, defecto string) string {
