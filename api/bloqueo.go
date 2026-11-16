@@ -3,9 +3,7 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log"
-	"math"
 	"net/http"
 	"net/netip"
 	"strings"
@@ -37,13 +35,10 @@ func (a *App) ipBloqueada(ctx context.Context, ip string) (time.Duration, error)
 	return time.Until(hasta), nil
 }
 
-func errorBloqueoIP(queda time.Duration) error {
-	minutos := int(math.Ceil(queda.Minutes()))
-	if minutos < 1 {
-		minutos = 1
-	}
-	return &errHTTP{codigo: http.StatusTooManyRequests,
-		msg: fmt.Sprintf("Demasiados intentos fallidos desde tu dirección. El acceso está bloqueado durante %d minuto(s).", minutos)}
+// La respuesta a una dirección bloqueada es la misma que a una contraseña
+// equivocada, con el mismo código: no se le dice que está bloqueada ni cuánto falta.
+func errorBloqueoIP(_ time.Duration) error {
+	return &errHTTP{codigo: http.StatusUnauthorized, msg: mensajeAccesoRechazado}
 }
 
 // registrarFalloIP anota un intento fallido y bloquea la dirección si llega al

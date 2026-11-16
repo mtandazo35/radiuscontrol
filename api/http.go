@@ -40,6 +40,12 @@ type errHTTP struct {
 
 func (e *errHTTP) Error() string { return e.msg }
 
+// Lo único que se le dice a quien no logra entrar. No distingue entre usuario
+// inexistente, contraseña equivocada, cuenta bloqueada o dirección bloqueada:
+// decir que hay un bloqueo le confirma a un atacante que la protección saltó y
+// cuánto debe esperar. El motivo real queda en el registro de actividad.
+const mensajeAccesoRechazado = "Usuario o contraseña incorrectos."
+
 // Tope del texto de búsqueda que llega por la URL.
 const largoBuscar = 100
 
@@ -269,7 +275,7 @@ func (a *App) iniciarSesion(w http.ResponseWriter, r *http.Request) error {
 	// equivocada y una cuenta bloqueada: quien no conoce la contraseña no puede
 	// distinguir los tres casos ni averiguar qué cuentas existen.
 	incorrecto := &errHTTP{codigo: http.StatusUnauthorized,
-		msg: "Usuario o contraseña incorrectos. Si la cuenta quedó bloqueada por intentos fallidos, espera o pide a un administrador que la desbloquee."}
+		msg: mensajeAccesoRechazado}
 
 	// Una dirección bloqueada no llega a probar ninguna contraseña.
 	queda, err := a.ipBloqueada(ctx, ip)
