@@ -60,8 +60,8 @@ export default function Configuracion() {
       <section className="space-y-3">
         <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Estado del motor y del firewall</h2>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <Card className="flex flex-col justify-between p-4">
-          <div className="mb-3 flex items-center justify-between gap-2 border-b pb-2.5">
+        <Card className="p-4">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 border-b pb-2.5">
             <h3 className="text-sm font-semibold">Guardado en el panel</h3>
             {estado?.cambios_pendientes ? (
               <Badge variant="warning">Distinto de lo aplicado</Badge>
@@ -81,8 +81,8 @@ export default function Configuracion() {
           </dl>
         </Card>
 
-        <Card className="flex flex-col justify-between p-4">
-          <div className="mb-3 flex items-center justify-between gap-2 border-b pb-2.5">
+        <Card className="p-4">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 border-b pb-2.5">
             <h3 className="text-sm font-semibold">Aplicado</h3>
           </div>
           <dl className="space-y-2.5">
@@ -96,8 +96,8 @@ export default function Configuracion() {
           </dl>
         </Card>
 
-        <Card className="flex flex-col justify-between p-4">
-          <div className="mb-3 flex items-center justify-between gap-2 border-b pb-2.5">
+        <Card className="p-4">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 border-b pb-2.5">
             <h3 className="text-sm font-semibold">FreeRADIUS</h3>
             {estado?.sincronizado ? (
               <Badge variant="success">Coincide con lo aplicado</Badge>
@@ -115,8 +115,8 @@ export default function Configuracion() {
           </dl>
         </Card>
 
-        <Card className="flex flex-col justify-between p-4">
-          <div className="mb-3 flex items-center justify-between gap-2 border-b pb-2.5">
+        <Card className="p-4">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 border-b pb-2.5">
             <h3 className="text-sm font-semibold">Firewall del servidor</h3>
             {estado?.firewall_al_dia ? (
               <Badge variant="success">Coincide con lo aplicado</Badge>
