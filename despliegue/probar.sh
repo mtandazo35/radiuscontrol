@@ -676,8 +676,10 @@ comprobar "Bloqueo por IP: los tres primeros intentos fallidos responden 401" "$
 entrar "usuario-que-no-existe" "equivocada-4" "" "$IP_ATACANTE"
 comprobar "Bloqueo por IP: el cuarto intento fallido también responde 401, aunque sea con otra cuenta" "$([ "$CODIGO" = 401 ]; echo $?)"
 entrar "$ADMIN_PRUEBA" "$ADMIN_CLAVE" "" "$IP_ATACANTE"
-comprobar "Bloqueo por IP: el quinto intento se bloquea aunque la contraseña sea correcta, 429" \
-    "$([ "$CODIGO" = 429 ] && [ -z "$SESION" ]; echo $?)" "$CUERPO"
+comprobar "Bloqueo por IP: el quinto intento se rechaza aunque la contraseña sea correcta, 401" \
+    "$([ "$CODIGO" = 401 ] && [ -z "$SESION" ]; echo $?)" "$CUERPO"
+comprobar "Bloqueo por IP: la respuesta no dice que hay un bloqueo, es la misma que con una contraseña equivocada" \
+    "$([ "$(printf '%s' "$CUERPO" | jq -r .error)" = "Usuario o contraseña incorrectos." ]; echo $?)" "$CUERPO"
 entrar "$ADMIN_PRUEBA" "$ADMIN_CLAVE"
 comprobar "Bloqueo por IP: desde otra dirección la misma cuenta sigue entrando, 200" "$([ "$CODIGO" = 200 ] && [ -n "$SESION" ]; echo $?)"
 OCULTAR+=("$SESION")
