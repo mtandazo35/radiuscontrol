@@ -361,9 +361,9 @@ export function Limpieza() {
                   </div>
                 ))}
               </div>
-              <div className="flex justify-end">
-                <Button type="submit" disabled={!sucio || guardando}>
-                  {guardando ? "Guardando…" : "Guardar"}
+              <div className="flex flex-wrap items-center justify-end gap-3 pt-2">
+                <Button type="submit" variant={sucio ? "default" : "outline"} disabled={!sucio || guardando}>
+                  {guardando ? "Guardando…" : sucio ? "Guardar cambios" : "Sin cambios"}
                 </Button>
               </div>
             </form>

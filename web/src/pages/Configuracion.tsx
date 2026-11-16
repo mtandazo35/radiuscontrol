@@ -37,7 +37,7 @@ export default function Configuracion() {
   const activa = estado?.activa;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div>
         <p className="text-sm text-muted-foreground">
           Lo que el panel tiene guardado, lo que se aplicó, lo que FreeRADIUS declara tener cargado y lo que el firewall
@@ -57,11 +57,102 @@ export default function Configuracion() {
         </Card>
       )}
 
+      <section className="space-y-3">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Estado del motor y del firewall</h2>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <Card className="flex flex-col justify-between p-4">
+          <div className="mb-3 flex items-center justify-between gap-2 border-b pb-2.5">
+            <h3 className="text-sm font-semibold">Guardado en el panel</h3>
+            {estado?.cambios_pendientes ? (
+              <Badge variant="warning">Distinto de lo aplicado</Badge>
+            ) : (
+              <Badge variant="success">Igual a lo aplicado</Badge>
+            )}
+          </div>
+          <dl className="space-y-2.5">
+            <Dato titulo="Routers y usuarios activos">
+              {estado ? `${estado.deseado.routers} routers, ${estado.deseado.usuarios} usuarios` : "—"}
+            </Dato>
+            <Dato titulo="Huella">
+              <span className="font-mono text-xs">
+                {huellaCorta(estado?.deseado.sha_clients)} · {huellaCorta(estado?.deseado.sha_authorize)}
+              </span>
+            </Dato>
+          </dl>
+        </Card>
+
+        <Card className="flex flex-col justify-between p-4">
+          <div className="mb-3 flex items-center justify-between gap-2 border-b pb-2.5">
+            <h3 className="text-sm font-semibold">Aplicado</h3>
+          </div>
+          <dl className="space-y-2.5">
+            <Dato titulo="Última aplicación">{activa ? fecha(activa.creada) : "Ninguna todavía"}</Dato>
+            <Dato titulo="Huella">
+              <span className="font-mono text-xs">
+                {huellaCorta(activa?.sha_clients)} · {huellaCorta(activa?.sha_authorize)}
+              </span>
+            </Dato>
+            <Dato titulo="Aplicada por">{activa?.operador ?? "—"}</Dato>
+          </dl>
+        </Card>
+
+        <Card className="flex flex-col justify-between p-4">
+          <div className="mb-3 flex items-center justify-between gap-2 border-b pb-2.5">
+            <h3 className="text-sm font-semibold">FreeRADIUS</h3>
+            {estado?.sincronizado ? (
+              <Badge variant="success">Coincide con lo aplicado</Badge>
+            ) : (
+              <Badge variant="destructive">No coincide con lo aplicado</Badge>
+            )}
+          </div>
+          <dl className="space-y-2.5">
+            <Dato titulo="Estado">{fr ? (textoFreeradius[fr.estado] ?? fr.estado) : "Sin datos"}</Dato>
+            <Dato titulo="Huella cargada">
+              <span className="font-mono text-xs">
+                {huellaCorta(fr?.sha_clients)} · {huellaCorta(fr?.sha_authorize)}
+              </span>
+            </Dato>
+          </dl>
+        </Card>
+
+        <Card className="flex flex-col justify-between p-4">
+          <div className="mb-3 flex items-center justify-between gap-2 border-b pb-2.5">
+            <h3 className="text-sm font-semibold">Firewall del servidor</h3>
+            {estado?.firewall_al_dia ? (
+              <Badge variant="success">Coincide con lo aplicado</Badge>
+            ) : (
+              <Badge variant="destructive">No coincide con lo aplicado</Badge>
+            )}
+          </div>
+          <dl className="space-y-2.5">
+            <Dato titulo="Estado">
+              {!fw ? "Sin datos del agente" : !fw.ufw_activo ? "UFW está desactivado" : (textoFirewall[fw.estado] ?? fw.estado)}
+            </Dato>
+            <Dato titulo="Redes con acceso a 1812/udp">
+              {fw && fw.redes.length > 0 ? (
+                <span className="font-mono text-xs">
+                  {fw.redes.map((red) => (
+                    <span key={red} className="block">
+                      {red}
+                    </span>
+                  ))}
+                </span>
+              ) : (
+                "Ninguna"
+              )}
+            </Dato>
+          </dl>
+        </Card>
+        </div>
+      </section>
+
       {operador?.rol === "administrador" && (
-        <Card className="p-4">
+        <section className="space-y-3">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Sistema y accesos</h2>
+          <Card className="p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h2 className="text-sm font-semibold">Versión</h2>
+              <h3 className="text-sm font-semibold">Versión</h3>
               <p className="text-sm text-muted-foreground">
                 Las mejoras se publican en el repositorio y se instalan desde aquí. Nunca se instalan solas.
               </p>
@@ -110,96 +201,17 @@ export default function Configuracion() {
           </dl>
           {b?.error && <p className="mt-3 text-sm text-destructive">{b.error}</p>}
           {p && p.estado !== "ok" && p.estado !== "en-curso" && p.mensaje && <p className="mt-3 text-sm text-destructive">{p.mensaje}</p>}
-        </Card>
+          </Card>
+          <AccesoServidor />
+        </section>
       )}
 
-      {operador?.rol === "administrador" && <AccesoServidor />}
-
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <Card className="p-4">
-          <h2 className="mb-3 text-sm font-semibold">Guardado en el panel</h2>
-          <dl className="space-y-3">
-            <Dato titulo="Routers y usuarios activos">
-              {estado ? `${estado.deseado.routers} routers, ${estado.deseado.usuarios} usuarios` : "—"}
-            </Dato>
-            <Dato titulo="Huella">
-              <span className="font-mono text-xs">
-                {huellaCorta(estado?.deseado.sha_clients)} · {huellaCorta(estado?.deseado.sha_authorize)}
-              </span>
-            </Dato>
-            <Dato titulo="Situación">
-              {estado?.cambios_pendientes ? (
-                <Badge variant="warning">Distinto de lo aplicado</Badge>
-              ) : (
-                <Badge variant="success">Igual a lo aplicado</Badge>
-              )}
-            </Dato>
-          </dl>
-        </Card>
-
-        <Card className="p-4">
-          <h2 className="mb-3 text-sm font-semibold">Aplicado</h2>
-          <dl className="space-y-3">
-            <Dato titulo="Última aplicación">{activa ? fecha(activa.creada) : "Ninguna todavía"}</Dato>
-            <Dato titulo="Huella">
-              <span className="font-mono text-xs">
-                {huellaCorta(activa?.sha_clients)} · {huellaCorta(activa?.sha_authorize)}
-              </span>
-            </Dato>
-            <Dato titulo="Aplicada por">{activa?.operador ?? "—"}</Dato>
-          </dl>
-        </Card>
-
-        <Card className="p-4">
-          <h2 className="mb-3 text-sm font-semibold">FreeRADIUS</h2>
-          <dl className="space-y-3">
-            <Dato titulo="Estado">{fr ? (textoFreeradius[fr.estado] ?? fr.estado) : "Sin datos"}</Dato>
-            <Dato titulo="Huella cargada">
-              <span className="font-mono text-xs">
-                {huellaCorta(fr?.sha_clients)} · {huellaCorta(fr?.sha_authorize)}
-              </span>
-            </Dato>
-            <Dato titulo="Situación">
-              {estado?.sincronizado ? (
-                <Badge variant="success">Coincide con lo aplicado</Badge>
-              ) : (
-                <Badge variant="destructive">No coincide con lo aplicado</Badge>
-              )}
-            </Dato>
-          </dl>
-        </Card>
-
-        <Card className="p-4">
-          <h2 className="mb-3 text-sm font-semibold">Firewall del servidor</h2>
-          <dl className="space-y-3">
-            <Dato titulo="Estado">
-              {!fw ? "Sin datos del agente" : !fw.ufw_activo ? "UFW está desactivado" : (textoFirewall[fw.estado] ?? fw.estado)}
-            </Dato>
-            <Dato titulo="Redes con acceso a 1812/udp">
-              {fw && fw.redes.length > 0 ? (
-                <span className="font-mono text-xs">
-                  {fw.redes.map((red) => (
-                    <span key={red} className="block">
-                      {red}
-                    </span>
-                  ))}
-                </span>
-              ) : (
-                "Ninguna"
-              )}
-            </Dato>
-            <Dato titulo="Situación">
-              {estado?.firewall_al_dia ? (
-                <Badge variant="success">Coincide con lo aplicado</Badge>
-              ) : (
-                <Badge variant="destructive">No coincide con lo aplicado</Badge>
-              )}
-            </Dato>
-          </dl>
-        </Card>
-      </div>
-
-      {operador?.rol === "administrador" && <Limpieza />}
+      {operador?.rol === "administrador" && (
+        <section className="space-y-3">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Mantenimiento y retención</h2>
+          <Limpieza />
+        </section>
+      )}
     </div>
   );
 }

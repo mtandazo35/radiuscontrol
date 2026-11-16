@@ -89,7 +89,6 @@ function Seccion({ servicio, titulo, tuIp, gestionadas, ajenas, ocupado, onAlta,
   // Todas las filas comparten la misma rejilla: el texto a la izquierda y la
   // acción a la derecha, con el mismo ancho, para que queden alineadas.
   const fila = "grid min-h-[4.5rem] grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5";
-  const accion = "w-44 justify-center";
 
   return (
     <section className="space-y-3 p-4">
@@ -118,7 +117,7 @@ function Seccion({ servicio, titulo, tuIp, gestionadas, ajenas, ocupado, onAlta,
                   {g.operador || "—"} · {fecha(g.creado)}
                 </p>
               </div>
-              <Button size="sm" variant="outline" className={cn(accion, "text-destructive")} disabled={ocupado} onClick={() => onQuitar(g)}>
+              <Button size="sm" variant="ghost" className="shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive px-3" disabled={ocupado} onClick={() => onQuitar(g)}>
                 Quitar
               </Button>
             </li>
@@ -137,7 +136,7 @@ function Seccion({ servicio, titulo, tuIp, gestionadas, ajenas, ocupado, onAlta,
               <Button
                 size="sm"
                 variant="outline"
-                className={accion}
+                className="shrink-0 text-xs"
                 disabled={ocupado}
                 title="El panel pasa a gestionar esta regla, sin cortar el acceso."
                 onClick={() => void onAlta(servicio, a.red, a.comentario ?? "")}
