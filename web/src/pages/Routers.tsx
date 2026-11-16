@@ -226,15 +226,15 @@ export default function Routers() {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
         <Input
-          className="max-w-xs"
+          className="col-span-2 w-full sm:w-64 sm:max-w-xs"
           placeholder="Buscar nombre, empresa o red"
           aria-label="Buscar routers"
           value={buscar}
           onChange={(e) => setBuscar(e.target.value)}
         />
-        <Select aria-label="Empresa" value={fEmpresa} onChange={(e) => setFEmpresa(e.target.value)}>
+        <Select className="col-span-1 w-full sm:w-auto" aria-label="Empresa" value={fEmpresa} onChange={(e) => setFEmpresa(e.target.value)}>
           <option value="">Todas las empresas</option>
           {empresasEnUso.map((e) => (
             <option key={e} value={e}>
@@ -243,23 +243,23 @@ export default function Routers() {
           ))}
           <option value="-">Sin empresa</option>
         </Select>
-        <Select aria-label="Acceso" value={fAcceso} onChange={(e) => setFAcceso(e.target.value)}>
+        <Select className="col-span-1 w-full sm:w-auto" aria-label="Acceso" value={fAcceso} onChange={(e) => setFAcceso(e.target.value)}>
           <option value="">Cualquier acceso</option>
           <option value="general">General</option>
           <option value="restringido">Restringido</option>
         </Select>
-        <Select aria-label="Estado" value={fEstado} onChange={(e) => setFEstado(e.target.value)}>
+        <Select className="col-span-1 w-full sm:w-auto" aria-label="Estado" value={fEstado} onChange={(e) => setFEstado(e.target.value)}>
           <option value="">Cualquier estado</option>
           <option value="activo">Activos</option>
           <option value="suspendido">Suspendidos</option>
         </Select>
         {conFiltros && (
-          <Button variant="ghost" size="sm" onClick={limpiarFiltros}>
+          <Button variant="ghost" size="sm" className="col-span-2 justify-center sm:col-span-1 sm:justify-start" onClick={limpiarFiltros}>
             Limpiar filtros
           </Button>
         )}
         {lista && visibles && (
-          <span className="ml-auto font-mono text-xs text-muted-foreground">
+          <span className="col-span-2 text-right font-mono text-xs text-muted-foreground sm:ml-auto">
             {visibles.length} de {lista.length}
           </span>
         )}
@@ -343,13 +343,13 @@ export default function Routers() {
                     >
                       Editar
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => rotar(r)}>
+                    <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-foreground" onClick={() => rotar(r)}>
                       Rotar secreto
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => alternar(r)}>
+                    <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-foreground" onClick={() => alternar(r)}>
                       {r.activo ? "Suspender" : "Activar"}
                     </Button>
-                    <Button size="sm" variant="outline" className="text-destructive" onClick={() => borrar(r)}>
+                    <Button size="sm" variant="ghost" className="text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => borrar(r)}>
                       Eliminar
                     </Button>
                   </div>
@@ -364,19 +364,21 @@ export default function Routers() {
         {form && (
           <DialogContent className="max-w-2xl" titulo={form.id === null ? "Nuevo router" : "Editar router"}>
             <form onSubmit={guardar} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="nombre">Nombre</Label>
-                <Input id="nombre" required maxLength={63} value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="empresa">Empresa</Label>
-                <Input id="empresa" required maxLength={63} list="empresas" autoComplete="off" value={form.empresa} onChange={(e) => setForm({ ...form, empresa: e.target.value })} />
-                <datalist id="empresas">
-                  {empresas.map((e) => (
-                    <option key={e.nombre} value={e.nombre} />
-                  ))}
-                </datalist>
-                <p className="text-xs text-muted-foreground">A quién pertenece el router. Escribe una nueva o elige una existente.</p>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="nombre">Nombre</Label>
+                  <Input id="nombre" required maxLength={63} value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="empresa">Empresa</Label>
+                  <Input id="empresa" required maxLength={63} list="empresas" autoComplete="off" value={form.empresa} onChange={(e) => setForm({ ...form, empresa: e.target.value })} />
+                  <datalist id="empresas">
+                    {empresas.map((e) => (
+                      <option key={e.nombre} value={e.nombre} />
+                    ))}
+                  </datalist>
+                  <p className="text-xs text-muted-foreground">A quién pertenece el router. Escribe una nueva o elige una existente.</p>
+                </div>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="descripcion">Descripción</Label>

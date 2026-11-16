@@ -72,9 +72,9 @@ export default function Autenticaciones() {
         />
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
         <Input
-          className="max-w-xs"
+          className="col-span-2 w-full sm:max-w-xs"
           placeholder="Buscar usuario, router, empresa o IP"
           aria-label="Buscar"
           value={buscar}
@@ -83,7 +83,7 @@ export default function Autenticaciones() {
             setPagina(1);
           }}
         />
-        <div className="flex rounded-md border bg-card p-0.5" role="group" aria-label="Resultado">
+        <div className="col-span-2 flex w-full flex-wrap rounded-md border bg-card p-0.5 sm:w-auto" role="group" aria-label="Resultado">
           {filtros.map((f) => (
             <button
               key={f.valor}

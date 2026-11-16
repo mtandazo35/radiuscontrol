@@ -152,15 +152,15 @@ export default function Usuarios() {
         </Button>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
         <Input
-          className="max-w-xs"
+          className="col-span-2 w-full sm:w-64 sm:max-w-xs"
           placeholder="Buscar usuario o nombre"
           aria-label="Buscar usuarios"
           value={buscar}
           onChange={(e) => setBuscar(e.target.value)}
         />
-        <Select aria-label="Grupo" value={fGrupo} onChange={(e) => setFGrupo(e.target.value)}>
+        <Select className="col-span-1 w-full sm:w-auto" aria-label="Grupo" value={fGrupo} onChange={(e) => setFGrupo(e.target.value)}>
           <option value="">Todos los grupos</option>
           {gruposEnUso.map((g) => (
             <option key={g} value={g}>
@@ -168,7 +168,7 @@ export default function Usuarios() {
             </option>
           ))}
         </Select>
-        <Select aria-label="Estado" value={fEstado} onChange={(e) => setFEstado(e.target.value)}>
+        <Select className="col-span-1 w-full sm:w-auto" aria-label="Estado" value={fEstado} onChange={(e) => setFEstado(e.target.value)}>
           <option value="">Cualquier estado</option>
           <option value="activo">Activos</option>
           <option value="suspendido">Suspendidos</option>
@@ -177,6 +177,7 @@ export default function Usuarios() {
           <Button
             variant="ghost"
             size="sm"
+            className="col-span-2 justify-center sm:col-span-1 sm:justify-start"
             onClick={() => {
               setBuscar("");
               setFGrupo("");
@@ -187,7 +188,7 @@ export default function Usuarios() {
           </Button>
         )}
         {lista && visibles && (
-          <span className="ml-auto font-mono text-xs text-muted-foreground">
+          <span className="col-span-2 text-right font-mono text-xs text-muted-foreground sm:ml-auto">
             {visibles.length} de {lista.length}
           </span>
         )}
@@ -240,13 +241,13 @@ export default function Usuarios() {
                     >
                       Editar
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => nuevaClave(u)}>
+                    <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-foreground" onClick={() => nuevaClave(u)}>
                       Restablecer contraseña
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => alternar(u)}>
+                    <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-foreground" onClick={() => alternar(u)}>
                       {u.activo ? "Suspender" : "Activar"}
                     </Button>
-                    <Button size="sm" variant="outline" className="text-destructive" onClick={() => borrar(u)}>
+                    <Button size="sm" variant="ghost" className="text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => borrar(u)}>
                       Eliminar
                     </Button>
                   </div>

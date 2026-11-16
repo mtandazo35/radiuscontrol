@@ -215,22 +215,22 @@ function Operadores() {
                       </Button>
                     )}
                     {!yo && (
-                      <Button size="sm" variant="outline" onClick={() => restablecer(o)}>
+                      <Button size="sm" variant={o.bloqueado ? "ghost" : "outline"} className={o.bloqueado ? "text-muted-foreground hover:text-foreground" : undefined} onClick={() => restablecer(o)}>
                         Restablecer contraseña
                       </Button>
                     )}
                     {o.totp && !yo && (
-                      <Button size="sm" variant="outline" onClick={() => quitarTotp(o)}>
+                      <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-foreground" onClick={() => quitarTotp(o)}>
                         Retirar doble factor
                       </Button>
                     )}
                     {!yo && (
-                      <Button size="sm" variant="outline" onClick={() => hacer(() => api("PUT", `/operadores/${o.id}`, { rol: o.rol, activo: !o.activo }))}>
+                      <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-foreground" onClick={() => hacer(() => api("PUT", `/operadores/${o.id}`, { rol: o.rol, activo: !o.activo }))}>
                         {o.activo ? "Suspender" : "Activar"}
                       </Button>
                     )}
                     {!yo && (
-                      <Button size="sm" variant="outline" className="text-destructive" onClick={() => borrar(o)}>
+                      <Button size="sm" variant="ghost" className="text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => borrar(o)}>
                         Eliminar
                       </Button>
                     )}

@@ -69,9 +69,9 @@ function Punto({ tono, late }: { tono: keyof typeof colorTono; late?: boolean })
 function IndicadorEstado() {
   const { tono, texto } = useResumenEstado();
   return (
-    <span role="status" className={cn("flex items-center gap-2 text-xs font-medium", textoTono[tono])}>
+    <span aria-label={texto} role="status" className={cn("flex shrink-0 items-center gap-2 text-xs font-medium", textoTono[tono])}>
       <Punto tono={tono} late={tono === "ok"} />
-      {texto}
+      <span className="hidden sm:inline">{texto}</span>
     </span>
   );
 }
@@ -171,7 +171,7 @@ function SelectorRouter() {
     <select
       aria-label="Filtrar por router"
       title="Filtra Inicio, Routers y Autenticaciones"
-      className="h-9 max-w-[11rem] rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:max-w-[16rem]"
+      className="h-9 max-w-[8rem] rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:max-w-[16rem]"
       value={routerId ?? ""}
       onFocus={recargarRouters}
       onChange={(e) => setRouterId(e.target.value ? Number(e.target.value) : null)}
@@ -209,7 +209,7 @@ function Marco({ children }: { children: React.ReactNode }) {
             <p className="text-[11px] text-muted-foreground">FreeRADIUS • AAA</p>
           </div>
         </div>
-        <nav className="flex gap-1 overflow-x-auto px-2 pb-2 md:flex-col md:gap-0 md:overflow-visible md:px-3 md:py-3">
+        <nav className="flex gap-1 overflow-x-auto px-3 pb-2 scrollbar-none [mask-image:linear-gradient(to_right,black_85%,transparent_100%)] md:[mask-image:none] md:flex-col md:gap-0 md:overflow-visible md:px-3 md:py-3">
           {grupos.map((g) => (
             <div key={g.titulo} className="flex gap-1 md:mb-4 md:flex-col md:gap-0.5">
               <p className="hidden px-2 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground md:block">{g.titulo}</p>
@@ -237,11 +237,15 @@ function Marco({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
       <div className="min-w-0 flex-1">
-        <header className="sticky top-0 z-20 flex min-h-[56px] flex-wrap items-center gap-x-3 gap-y-2 border-b bg-card px-4 py-2 md:px-6">
-          <h1 className="text-base font-semibold tracking-tight">{titulo}</h1>
-          <IndicadorEstado />
-          <BotonAplicar />
-          <div className="ml-auto flex items-center gap-2">
+        {/* Una sola fila también en el teléfono: el título se recorta antes de
+            partir la barra, y el estado deja solo su punto. */}
+        <header className="sticky top-0 z-20 flex min-h-[56px] items-center gap-2 border-b bg-card px-3 py-2 sm:gap-3 sm:px-4 md:px-6">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+            <h1 className="truncate text-base font-semibold tracking-tight">{titulo}</h1>
+            <IndicadorEstado />
+            <BotonAplicar />
+          </div>
+          <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-2">
             <SelectorRouter />
             <Button variant="outline" size="icon" onClick={sincronizar} disabled={sincronizando} aria-label="Sincronizar ahora" title="Sincronizar ahora">
               <RefreshCw className={cn(sincronizando && "motion-safe:animate-spin")} />

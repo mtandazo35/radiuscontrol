@@ -68,6 +68,15 @@ TypeScript + Tailwind (`web/`) y el despliegue con Docker Compose (`despliegue/`
 - Accesibilidad: foco visible con teclado, texto alternativo o `aria-label` en los botones que solo llevan icono, y el color
   nunca como única señal de un estado.
 
+### Fallos ya ocurridos — no repetir
+
+- **Mover una pieza no es borrar las que se le parecen.** En un encargo que pedía subir la insignia «Situación» de cuatro
+  tarjetas a su encabezado, se borró también la insignia «Situación» de una quinta tarjeta (Versión) que el encargo no
+  nombraba. Antes de quitar un bloque, comprueba que es exactamente uno de los que el encargo enumera; lo que no se nombra
+  se queda como está.
+- **Antigravity sin interfaz:** cualquier comando de terminal se deniega y anula la respuesta entera. Lee y escribe solo con
+  las herramientas de archivos.
+
 ## 7. Trabajo completo en un turno
 
 - Trabaja tú mismo y en este turno. No lances subagentes ni tareas en segundo plano, y no termines diciendo que «vas a

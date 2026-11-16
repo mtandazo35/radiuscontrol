@@ -93,15 +93,28 @@ function Opcion({
   nombre,
   marcado,
   onMarcar,
+  tarjeta = false,
   children,
 }: {
   nombre: string;
   marcado: boolean;
   onMarcar: () => void;
+  tarjeta?: boolean;
   children: React.ReactNode;
 }) {
   return (
-    <label className="flex items-start gap-2 text-sm">
+    <label
+      className={cn(
+        "flex items-start gap-2 text-sm",
+        tarjeta &&
+          cn(
+            "w-full cursor-pointer gap-2.5 rounded-md border p-3 text-xs transition-colors",
+            marcado
+              ? "border-primary/50 bg-primary/10 text-foreground"
+              : "border-border bg-card text-muted-foreground hover:bg-muted/40",
+          ),
+      )}
+    >
       <input type="radio" name={nombre} className={casilla} checked={marcado} onChange={onMarcar} />
       <span>{children}</span>
     </label>
@@ -110,7 +123,7 @@ function Opcion({
 
 function Grupo({ titulo, children }: { titulo: string; children: React.ReactNode }) {
   return (
-    <fieldset className="min-w-0 space-y-3 rounded-md border p-3">
+    <fieldset className="min-w-0 space-y-3 rounded-lg border bg-muted/30 p-4">
       <legend className="px-1 text-sm font-medium">{titulo}</legend>
       {children}
     </fieldset>
@@ -149,11 +162,11 @@ export function BloqueAccesos({
 
   return (
     <Grupo titulo="Quién puede entrar">
-      <div className="space-y-2">
-        <Opcion nombre="modo-acceso" marcado={modo === "general"} onMarcar={() => onModo("general")}>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <Opcion tarjeta nombre="modo-acceso" marcado={modo === "general"} onMarcar={() => onModo("general")}>
           Manejo general: entran todos los usuarios activos, cada uno con su grupo
         </Opcion>
-        <Opcion nombre="modo-acceso" marcado={modo === "restringido"} onMarcar={() => onModo("restringido")}>
+        <Opcion tarjeta nombre="modo-acceso" marcado={modo === "restringido"} onMarcar={() => onModo("restringido")}>
           Restringido: solo los usuarios que elijas, con el permiso que les des aquí
         </Opcion>
       </div>
