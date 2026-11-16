@@ -1,6 +1,6 @@
 ARG FREERADIUS_TAG=latest-3.2
 
-FROM golang:1.25-bookworm AS compilacion
+FROM golang:1.26-bookworm AS compilacion
 WORKDIR /src
 COPY api/go.mod api/go.sum ./
 RUN go mod download
