@@ -5,7 +5,7 @@
 @layer base {
   /* Tema claro: equivalente del sistema oscuro, que es el de referencia. */
   :root {
-    --background: 210 40% 98%;
+    --background: 215 28% 95%;
     --foreground: 222 47% 11%;
     --card: 0 0% 100%;
     --card-foreground: 222 47% 11%;
@@ -20,7 +20,7 @@
     --destructive: 0 72% 45%;
     --destructive-foreground: 0 0% 100%;
     --success: 160 84% 26%;
-    --warning: 32 90% 36%;
+    --warning: 32 95% 32%;
     --border: 214 32% 86%;
     --input: 214 25% 78%;
     --ring: 221 83% 53%;

@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Badge, Card, Copiable, Input, Paginacion, Table, Td, Th } from "@/components/ui";
+import { Badge, Card, Copiable, EstadoVacio, Input, Paginacion, Table, Td, Th } from "@/components/ui";
 import { BotonVaciar } from "@/components/Vaciar";
 import { api, type PaginaAutenticaciones } from "@/lib/api";
 import { cn, fecha, motivoLegible } from "@/lib/utils";
@@ -124,8 +124,8 @@ export default function Autenticaciones() {
           <tbody>
             {lista?.length === 0 && (
               <tr>
-                <Td colSpan={8} className="py-10 text-center font-sans text-sm text-muted-foreground">
-                  No hay autenticaciones que coincidan.
+                <Td colSpan={8} className="font-sans text-sm">
+                  <EstadoVacio titulo="No hay autenticaciones que coincidan." />
                 </Td>
               </tr>
             )}

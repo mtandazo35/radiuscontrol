@@ -1,7 +1,7 @@
 import { Plus, Users } from "lucide-react";
 import * as React from "react";
 import { accesosDe, BloqueAccesos, CambiosMasivos, permisosDe, type Permisos } from "@/components/Accesos";
-import { Badge, Button, Card, Copiable, Dialog, DialogContent, DialogFooter, Input, Label, Select, Table, Td, Textarea, Th, ThOrden, comparar, useOrden } from "@/components/ui";
+import { Badge, Button, Card, Copiable, Dialog, DialogContent, DialogFooter, EstadoVacio, Input, Label, Select, Table, Td, Textarea, Th, ThOrden, comparar, useOrden } from "@/components/ui";
 import { api, type Empresa, type ModoAcceso, type RespuestaRouter, type Router, type Usuario } from "@/lib/api";
 import { fecha } from "@/lib/utils";
 import { useApp } from "../contexto";
@@ -291,8 +291,8 @@ export default function Routers() {
           <tbody>
             {visibles?.length === 0 && (
               <tr>
-                <Td colSpan={7} className="py-10 text-center text-muted-foreground">
-                  {lista?.length ? "Ningún router coincide con la búsqueda o los filtros." : "Todavía no hay routers. Crea el primero con «Nuevo router»."}
+                <Td colSpan={7}>
+                  <EstadoVacio titulo={lista?.length ? "Ningún router coincide con la búsqueda o los filtros." : "Todavía no hay routers. Crea el primero con «Nuevo router»."} />
                 </Td>
               </tr>
             )}

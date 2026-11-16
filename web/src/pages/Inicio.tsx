@@ -1,7 +1,7 @@
 import { KeyRound, Router as IconoRouter, ShieldAlert, Users } from "lucide-react";
 import * as React from "react";
 import { Link } from "react-router-dom";
-import { Badge, Card, Table, Td, Th } from "@/components/ui";
+import { Badge, Card, EstadoVacio, Table, Td, Th } from "@/components/ui";
 import { api } from "@/lib/api";
 import { cn, fecha, motivoLegible } from "@/lib/utils";
 import { useFiltro } from "../filtro";
@@ -101,7 +101,7 @@ function Indicador({
     aviso: "bg-warning/10 text-warning",
   }[tono];
   return (
-    <Card className="flex flex-col justify-between p-4 shadow-none">
+    <Card className="flex flex-col justify-between p-4">
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-medium text-muted-foreground">{titulo}</span>
         <span className={cn("rounded p-1.5", fondo)}>
@@ -220,11 +220,13 @@ function Lista({
 }) {
   const maximo = Math.max(1, ...filas.map((f) => f.total));
   return (
-    <Card className="p-4 shadow-none">
+    <Card className="min-h-[165px] p-4">
       <h2 className="text-sm font-semibold">{titulo}</h2>
       <p className="mb-3 text-[11px] text-muted-foreground">{ayuda}</p>
       {filas.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{vacio}</p>
+        <div className="flex h-20 items-center justify-center rounded border border-dashed border-border/70 p-3 text-center text-xs text-muted-foreground">
+          {vacio}
+        </div>
       ) : (
         <ul className="space-y-1.5">
           {filas.map((f) => (
@@ -363,7 +365,7 @@ export default function Inicio() {
       </div>
 
       <div className="grid gap-4 xl:grid-cols-3">
-        <Card className="p-4 shadow-none xl:col-span-2">
+        <Card className="p-4 xl:col-span-2">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
             <div>
               <h2 className="text-base font-semibold">Salud de autenticación</h2>
@@ -394,7 +396,7 @@ export default function Inicio() {
           <Grafico datos={datos} />
         </Card>
 
-        <Card className="flex flex-col shadow-none">
+        <Card className="flex flex-col">
           <div className="flex items-center justify-between gap-2 px-4 pb-2 pt-4">
             <h2 className="text-base font-semibold">Últimos intentos</h2>
             <Link to="/autenticaciones" className="text-sm font-medium text-primary hover:underline">
@@ -459,7 +461,7 @@ export default function Inicio() {
         />
       </div>
 
-      <Card className="shadow-none">
+      <Card>
         <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
           <h2 className="text-base font-semibold">Routers</h2>
           <Link to="/routers" className="text-sm font-medium text-primary hover:underline">
@@ -480,8 +482,8 @@ export default function Inicio() {
           <tbody>
             {datos.routers.length === 0 && (
               <tr>
-                <Td colSpan={6} className="text-center text-muted-foreground">
-                  Todavía no hay routers. Añade el primero en «Routers».
+                <Td colSpan={6}>
+                  <EstadoVacio titulo="Todavía no hay routers. Añade el primero en «Routers»." />
                 </Td>
               </tr>
             )}

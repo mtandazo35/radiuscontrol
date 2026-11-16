@@ -1,6 +1,6 @@
 import { Plus, UserCog } from "lucide-react";
 import * as React from "react";
-import { Badge, Button, Card, Dialog, DialogContent, DialogFooter, Input, Label, Paginacion, Table, Td, Th, Copiable } from "@/components/ui";
+import { Badge, Button, Card, Dialog, DialogContent, DialogFooter, EstadoVacio, Input, Label, Paginacion, Table, Td, Th, Copiable } from "@/components/ui";
 import { api, type Bloqueos as DatosBloqueos, type OperadorDetalle, type PaginaEventos, type Sesion } from "@/lib/api";
 import { ModalMiCuenta, nombreRol } from "@/components/MiCuenta";
 import { BotonVaciar } from "@/components/Vaciar";
@@ -437,8 +437,8 @@ function Bloqueos({ onCambio }: { onCambio: number }) {
         <tbody>
           {vacio && (
             <tr>
-              <Td colSpan={5} className="py-8 text-center text-muted-foreground">
-                No hay ninguna dirección ni cuenta bloqueada.
+              <Td colSpan={5}>
+                <EstadoVacio titulo="No hay ninguna dirección ni cuenta bloqueada." />
               </Td>
             </tr>
           )}
@@ -543,8 +543,8 @@ function Actividad() {
         <tbody>
           {datos?.eventos.length === 0 && (
             <tr>
-              <Td colSpan={5} className="py-8 text-center text-muted-foreground">
-                No hay actividad que coincida.
+              <Td colSpan={5}>
+                <EstadoVacio titulo="No hay actividad que coincida." />
               </Td>
             </tr>
           )}

@@ -1,7 +1,7 @@
 // Componentes base al estilo de shadcn/ui (Radix + Tailwind + variantes).
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { cva, type VariantProps } from "class-variance-authority";
-import { ArrowDown, ArrowUp, Check, ChevronsUpDown, Copy, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, ChevronsUpDown, Copy, Inbox, X } from "lucide-react";
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
@@ -58,7 +58,7 @@ export function Label({ className, ...props }: React.LabelHTMLAttributes<HTMLLab
 }
 
 export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("rounded-lg border bg-card text-card-foreground", className)} {...props} />;
+  return <div className={cn("rounded-lg border bg-card text-card-foreground shadow-sm dark:shadow-none", className)} {...props} />;
 }
 
 // Píldora translúcida con un punto del color del estado.
@@ -69,9 +69,9 @@ const badgeVariants = cva(
     variant: {
       default: "border-primary/20 bg-primary/10 text-primary",
       success: "border-success/20 bg-success/10 text-success",
-      warning: "border-warning/25 bg-warning/10 text-warning",
+      warning: "border-warning/30 bg-warning/15 text-warning font-semibold",
       destructive: "border-destructive/20 bg-destructive/10 text-destructive",
-      muted: "border-border bg-muted text-muted-foreground",
+      muted: "border-border/80 bg-muted/80 text-foreground/80 font-medium",
     },
   },
   defaultVariants: { variant: "default" },
@@ -132,6 +132,27 @@ export function Copiable({ texto, className }: { texto: string | null | undefine
         {hecho ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />}
       </button>
     </span>
+  );
+}
+
+// Lo que se ve en una tabla sin filas: icono, motivo y, si hace falta, qué hacer.
+export function EstadoVacio({
+  titulo,
+  descripcion,
+  icono: Icono = Inbox,
+}: {
+  titulo: string;
+  descripcion?: string;
+  icono?: React.ComponentType<{ className?: string }>;
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center px-4 py-10 text-center">
+      <div className="mb-3 flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground" aria-hidden="true">
+        <Icono className="size-5" />
+      </div>
+      <p className="text-sm font-medium text-foreground">{titulo}</p>
+      {descripcion && <p className="mt-1 max-w-sm text-xs text-muted-foreground">{descripcion}</p>}
+    </div>
   );
 }
 

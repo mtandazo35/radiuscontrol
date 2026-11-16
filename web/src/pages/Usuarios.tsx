@@ -1,6 +1,6 @@
 import { Plus } from "lucide-react";
 import * as React from "react";
-import { Badge, Button, Card, Dialog, DialogContent, DialogFooter, Input, Label, Select, Table, Td, Th, ThOrden, comparar, useOrden } from "@/components/ui";
+import { Badge, Button, Card, Dialog, DialogContent, DialogFooter, EstadoVacio, Input, Label, Select, Table, Td, Th, ThOrden, comparar, useOrden } from "@/components/ui";
 import { api, type RespuestaUsuario, type Usuario } from "@/lib/api";
 import { fecha } from "@/lib/utils";
 import { useApp } from "../contexto";
@@ -215,8 +215,8 @@ export default function Usuarios() {
           <tbody>
             {visibles?.length === 0 && (
               <tr>
-                <Td colSpan={5} className="py-10 text-center text-muted-foreground">
-                  {lista?.length ? "Ningún usuario coincide con la búsqueda o los filtros." : "Todavía no hay usuarios. Crea el primero con «Nuevo usuario»."}
+                <Td colSpan={5}>
+                  <EstadoVacio titulo={lista?.length ? "Ningún usuario coincide con la búsqueda o los filtros." : "Todavía no hay usuarios. Crea el primero con «Nuevo usuario»."} />
                 </Td>
               </tr>
             )}
