@@ -41,6 +41,7 @@ En todas las tablas:
 ### Inicio
 
 - Autenticaciones y rechazos de las últimas 24 horas, routers activos y usuarios activos.
+  Los sondeos sin clave (ver Autenticaciones) no cuentan en ninguna estadística.
 - Gráfico de logins aceptados y rechazados de la última hora, de las últimas 12 o de las
   últimas 24: un pico de rechazos delata a alguien o algo reintentando.
 - Los últimos intentos, quién entra más, a quién se rechaza más, desde qué dirección y por
@@ -218,6 +219,17 @@ RED_GESTION=192.0.2.0/24 ./instalar.sh
 Deja siempre una cuenta local en el router: si el servidor RADIUS no responde, es la única
 forma de entrar.
 
+### Sondeos al abrir SSH
+
+Todo cliente SSH (PuTTY, Oxidized, un script) abre la conexión preguntando al router qué
+formas de entrar admite. RouterOS convierte esa pregunta en una petición RADIUS con la
+contraseña vacía, antes de que el usuario escriba la suya. Por eso cada login por SSH
+genera dos peticiones casi a la vez: el sondeo y el login de verdad.
+
+FreeRADIUS rechaza el sondeo como cualquier contraseña incorrecta, pero RadiusControl lo
+reconoce (comprueba si la respuesta se calculó con la contraseña vacía) y lo registra
+aparte. Un sondeo nunca da acceso; solo cambia cómo se anota y se cuenta.
+
 ### Message-Authenticator
 
 Es la firma que un router añade a cada petición RADIUS, calculada con el secreto
@@ -277,7 +289,7 @@ agente las repone o las quita en un minuto como mucho.
 
 ## Pruebas
 
-`despliegue/probar.sh` ejecuta más de 240 pruebas de extremo a extremo en el propio
+`despliegue/probar.sh` ejecuta 250 pruebas de extremo a extremo en el propio
 servidor: usa la API como lo haría el panel y verifica el resultado con logins RADIUS
 reales contra FreeRADIUS y con las reglas reales de UFW. Crea sus propios datos, con su
 propia cuenta, y los borra al terminar. La evidencia queda en `despliegue/evidencias/`.
