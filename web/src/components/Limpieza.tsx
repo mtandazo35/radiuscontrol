@@ -374,7 +374,7 @@ export function Limpieza() {
             {datos.ultimas.length === 0 ? (
               <p className="px-4 pb-4 text-sm text-muted-foreground">Todavía no se ha hecho ninguna limpieza.</p>
             ) : (
-              <Table>
+              <Table id="limpiezas">
                 <thead>
                   <tr>
                     <Th>Fecha</Th>
@@ -388,12 +388,12 @@ export function Limpieza() {
                 <tbody>
                   {datos.ultimas.map((u) => (
                     <tr key={u.id}>
-                      <Td className="whitespace-nowrap py-2 text-muted-foreground">{fecha(u.fecha)}</Td>
+                      <Td className="whitespace-nowrap py-2 text-muted-foreground" valor={u.fecha ?? ""}>{fecha(u.fecha)}</Td>
                       <Td className="whitespace-nowrap py-2">{nombreMotivo[u.motivo] ?? u.motivo}</Td>
                       <Td className="py-2">{u.operador}</Td>
-                      <Td className="py-2 text-right">{numero(u.autenticaciones)}</Td>
-                      <Td className="py-2 text-right">{numero(u.actividad)}</Td>
-                      <Td className="whitespace-nowrap py-2">
+                      <Td className="py-2 text-right" valor={u.autenticaciones}>{numero(u.autenticaciones)}</Td>
+                      <Td className="py-2 text-right" valor={u.actividad}>{numero(u.actividad)}</Td>
+                      <Td className="whitespace-nowrap py-2" valor={u.disco_antes}>
                         {u.disco_antes} % → {u.disco_despues} %
                       </Td>
                     </tr>

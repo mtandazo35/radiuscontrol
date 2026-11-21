@@ -559,6 +559,17 @@ func (a *App) listarAuditoria(w http.ResponseWriter, r *http.Request, _ *Operado
 	if len(buscar) > largoBuscar {
 		return malo("La búsqueda es demasiado larga.")
 	}
+	// Orden: solo columnas de esta lista; lo que llega en la URL elige una, nunca se copia.
+	ordenSQL, ok := map[string]string{
+		"fecha": "id", "operador": "lower(operador)", "accion": "accion", "objeto": "lower(objeto)", "ip": "ip",
+	}[q.Get("orden")]
+	if !ok {
+		ordenSQL = "id"
+	}
+	sentido := "DESC"
+	if q.Get("dir") == "asc" {
+		sentido = "ASC"
+	}
 	const filtro = `$1 = '' OR operador ILIKE '%' || $1 || '%' OR accion ILIKE '%' || $1 || '%'
 		OR objeto ILIKE '%' || $1 || '%' OR ip LIKE $1 || '%'`
 
@@ -577,7 +588,7 @@ func (a *App) listarAuditoria(w http.ResponseWriter, r *http.Request, _ *Operado
 	}
 
 	filas, err := a.db.Query(ctx, `SELECT id, fecha, operador, ip, accion, objeto, detalle::text
-		FROM auditoria WHERE `+filtro+` ORDER BY id DESC LIMIT $2 OFFSET $3`,
+		FROM auditoria WHERE `+filtro+` ORDER BY `+ordenSQL+` `+sentido+`, id DESC LIMIT $2 OFFSET $3`,
 		buscar, tamano, (pagina-1)*tamano)
 	if err != nil {
 		return err

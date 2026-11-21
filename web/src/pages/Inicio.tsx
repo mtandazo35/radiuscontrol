@@ -468,7 +468,7 @@ export default function Inicio() {
             Administrar routers
           </Link>
         </div>
-        <Table>
+        <Table id="inicio-routers">
           <thead>
             <tr>
               <Th>Router</Th>
@@ -488,16 +488,16 @@ export default function Inicio() {
               </tr>
             )}
             {datos.routers.map((r) => (
-              <tr key={r.id} className="hover:bg-muted/50">
+              <tr key={r.id}>
                 <Td>
                   <div className="font-medium">{r.nombre}</div>
                   {r.empresa && <div className="text-xs text-muted-foreground">{r.empresa}</div>}
                 </Td>
                 <Td>{r.activo ? <Badge variant="success">Activo</Badge> : <Badge variant="muted">Suspendido</Badge>}</Td>
-                <Td className="text-right font-mono">{r.redes}</Td>
-                <Td className="text-right font-mono">{miles.format(r.aceptados)}</Td>
-                <Td className={cn("text-right font-mono", r.rechazados > 0 && "font-semibold text-destructive")}>{miles.format(r.rechazados)}</Td>
-                <Td className="font-mono text-xs">{r.ultimo ? fecha(r.ultimo) : "Nunca"}</Td>
+                <Td className="text-right font-mono" valor={r.redes}>{r.redes}</Td>
+                <Td className="text-right font-mono" valor={r.aceptados}>{miles.format(r.aceptados)}</Td>
+                <Td className={cn("text-right font-mono", r.rechazados > 0 && "font-semibold text-destructive")} valor={r.rechazados}>{miles.format(r.rechazados)}</Td>
+                <Td className="font-mono text-xs" valor={r.ultimo ?? ""}>{r.ultimo ? fecha(r.ultimo) : "Nunca"}</Td>
               </tr>
             ))}
           </tbody>

@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Badge, Card, Copiable, EstadoVacio, Input, Paginacion, Table, Td, Th } from "@/components/ui";
+import { Badge, Card, Copiable, EstadoVacio, Input, Paginacion, Table, Td, ThOrden, useOrden } from "@/components/ui";
 import { BotonVaciar } from "@/components/Vaciar";
 import { api, type PaginaAutenticaciones } from "@/lib/api";
 import { cn, fecha, motivoLegible } from "@/lib/utils";
@@ -21,6 +21,13 @@ export default function Autenticaciones() {
   const [pagina, setPagina] = React.useState(1);
   const [tamano, setTamano] = React.useState(25);
   const lista = datos?.autenticaciones;
+  // La tabla está paginada: la ordena el servidor. Por omisión, lo más reciente primero.
+  type Campo = "fecha" | "resultado" | "usuario" | "router" | "empresa" | "origen" | "metodo" | "detalle";
+  const { orden, ordenarPor } = useOrden<Campo>("fecha", "autenticaciones-datos", false);
+  const ordenar = (campo: Campo) => {
+    ordenarPor(campo);
+    setPagina(1);
+  };
 
   // Al cambiar de router se vuelve a la primera página.
   React.useEffect(() => {
@@ -34,6 +41,8 @@ export default function Autenticaciones() {
         if (resultado) q.set("resultado", resultado);
         if (buscar.trim()) q.set("buscar", buscar.trim());
         if (routerId !== null) q.set("router", String(routerId));
+        q.set("orden", orden.campo);
+        q.set("dir", orden.asc ? "asc" : "desc");
         const r = await api<PaginaAutenticaciones>("GET", `/autenticaciones?${q}`, undefined, { auto: !avisar });
         setDatos(r);
         // El servidor corrige una página que ya no existe.
@@ -42,7 +51,7 @@ export default function Autenticaciones() {
         if (avisar) avisarError(e);
       }
     },
-    [resultado, buscar, routerId, pagina, tamano, avisarError],
+    [resultado, buscar, routerId, pagina, tamano, orden, avisarError],
   );
 
   React.useEffect(() => {
@@ -108,17 +117,33 @@ export default function Autenticaciones() {
       {/* Visor de registros: fondo de consola, letra monoespaciada y los
           rechazos señalados en rojo para que salten a la vista. */}
       <Card className="overflow-hidden bg-consola">
-        <Table className="font-mono text-xs">
+        <Table id="autenticaciones" ordenLocal={false} className="font-mono text-xs">
           <thead>
             <tr>
-              <Th>Fecha</Th>
-              <Th>Resultado</Th>
-              <Th>Usuario</Th>
-              <Th>Router</Th>
-              <Th>Empresa</Th>
-              <Th>Entró desde</Th>
-              <Th>Método</Th>
-              <Th>Grupo o motivo</Th>
+              <ThOrden campo="fecha" orden={orden} onOrden={ordenar}>
+                Fecha
+              </ThOrden>
+              <ThOrden campo="resultado" orden={orden} onOrden={ordenar}>
+                Resultado
+              </ThOrden>
+              <ThOrden campo="usuario" orden={orden} onOrden={ordenar}>
+                Usuario
+              </ThOrden>
+              <ThOrden campo="router" orden={orden} onOrden={ordenar}>
+                Router
+              </ThOrden>
+              <ThOrden campo="empresa" orden={orden} onOrden={ordenar}>
+                Empresa
+              </ThOrden>
+              <ThOrden campo="origen" orden={orden} onOrden={ordenar}>
+                Entró desde
+              </ThOrden>
+              <ThOrden campo="metodo" orden={orden} onOrden={ordenar}>
+                Método
+              </ThOrden>
+              <ThOrden campo="detalle" orden={orden} onOrden={ordenar}>
+                Grupo o motivo
+              </ThOrden>
             </tr>
           </thead>
           <tbody>
@@ -132,10 +157,8 @@ export default function Autenticaciones() {
             {lista?.map((a) => {
               const rechazado = a.resultado === "rechazado";
               return (
-                <tr key={a.id}>
-                  <Td className={cn("whitespace-nowrap border-l-2 py-2 text-muted-foreground", rechazado ? "border-l-destructive" : "border-l-transparent")}>
-                    {fecha(a.fecha)}
-                  </Td>
+                <tr key={a.id} className={cn(rechazado && "shadow-[inset_2px_0_0_hsl(var(--destructive))]")}>
+                  <Td className="whitespace-nowrap py-2 text-muted-foreground">{fecha(a.fecha)}</Td>
                   <Td className="py-2">
                     <Badge variant={rechazado ? "destructive" : "success"}>{rechazado ? "Access-Reject" : "Access-Accept"}</Badge>
                   </Td>

@@ -1,6 +1,6 @@
 import { Plus, UserCog } from "lucide-react";
 import * as React from "react";
-import { Badge, Button, Card, Dialog, DialogContent, DialogFooter, EstadoVacio, Input, Label, Paginacion, Table, Td, Th, Copiable } from "@/components/ui";
+import { Badge, Button, Card, Copiable, Dialog, DialogContent, DialogFooter, EstadoVacio, Input, Label, Paginacion, Table, Td, Th, ThOrden, useOrden } from "@/components/ui";
 import { api, type Bloqueos as DatosBloqueos, type OperadorDetalle, type PaginaEventos, type Sesion } from "@/lib/api";
 import { ModalMiCuenta, nombreRol } from "@/components/MiCuenta";
 import { BotonVaciar } from "@/components/Vaciar";
@@ -163,14 +163,14 @@ function Operadores() {
         </Button>
       }
     >
-      <Table>
+      <Table id="operadores">
         <thead>
           <tr>
             <Th>Usuario</Th>
             <Th>Rol</Th>
             <Th>Estado</Th>
             <Th>Último acceso</Th>
-            <Th className="text-center">Acciones</Th>
+            <Th sinOrden className="text-center">Acciones</Th>
           </tr>
         </thead>
         <tbody>
@@ -181,7 +181,7 @@ function Operadores() {
                 <Td className="font-medium">
                   {o.usuario} {yo && <span className="text-xs font-normal text-muted-foreground">(tú)</span>}
                 </Td>
-                <Td>
+                <Td valor={o.rol}>
                   <select
                     aria-label={`Rol de ${o.usuario}`}
                     className={selector + " max-w-[11rem]"}
@@ -200,7 +200,7 @@ function Operadores() {
                     {o.bloqueado && <Badge variant="destructive">Bloqueado</Badge>}
                   </div>
                 </Td>
-                <Td className="whitespace-nowrap text-muted-foreground">
+                <Td className="whitespace-nowrap text-muted-foreground" valor={o.ultimo_acceso ?? ""}>
                   {o.ultimo_acceso ? fecha(o.ultimo_acceso) : "Nunca"}
                   <div className="text-xs">{o.sesiones} sesión(es) abierta(s)</div>
                 </Td>
@@ -346,7 +346,7 @@ function Sesiones() {
         </Button>
       }
     >
-      <Table>
+      <Table id="sesiones">
         <thead>
           <tr>
             <Th>Operador</Th>
@@ -354,7 +354,7 @@ function Sesiones() {
             <Th>Abierta</Th>
             <Th>Última actividad</Th>
             <Th>Caduca como máximo</Th>
-            <Th className="text-center">Acciones</Th>
+            <Th sinOrden className="text-center">Acciones</Th>
           </tr>
         </thead>
         <tbody>
@@ -364,9 +364,9 @@ function Sesiones() {
               <Td className="text-xs">
                 <Copiable texto={s.ip} />
               </Td>
-              <Td className="whitespace-nowrap text-muted-foreground">{fecha(s.creada)}</Td>
-              <Td className="whitespace-nowrap text-muted-foreground">{fecha(s.ultima_actividad)}</Td>
-              <Td className="whitespace-nowrap text-muted-foreground">{fecha(s.expira)}</Td>
+              <Td className="whitespace-nowrap text-muted-foreground" valor={s.creada ?? ""}>{fecha(s.creada)}</Td>
+              <Td className="whitespace-nowrap text-muted-foreground" valor={s.ultima_actividad ?? ""}>{fecha(s.ultima_actividad)}</Td>
+              <Td className="whitespace-nowrap text-muted-foreground" valor={s.expira ?? ""}>{fecha(s.expira)}</Td>
               <Td>
                 {/* El hueco de la píldora existe en todas las filas: así el botón
                     queda en el mismo sitio tenga o no «Esta sesión» al lado. */}
@@ -428,14 +428,14 @@ function Bloqueos({ onCambio }: { onCambio: number }) {
           : "Direcciones IP y cuentas con el inicio de sesión bloqueado por intentos fallidos."
       }
     >
-      <Table>
+      <Table id="bloqueos">
         <thead>
           <tr>
             <Th>Tipo</Th>
             <Th>Bloqueado</Th>
             <Th>Intentos fallidos</Th>
             <Th>Hasta</Th>
-            <Th className="text-center">Acciones</Th>
+            <Th sinOrden className="text-center">Acciones</Th>
           </tr>
         </thead>
         <tbody>
@@ -454,8 +454,8 @@ function Bloqueos({ onCambio }: { onCambio: number }) {
               <Td className="text-xs">
                 <Copiable texto={b.ip} />
               </Td>
-              <Td>{b.intentos}</Td>
-              <Td className="whitespace-nowrap text-muted-foreground">{fecha(b.hasta)}</Td>
+              <Td valor={b.intentos}>{b.intentos}</Td>
+              <Td className="whitespace-nowrap text-muted-foreground" valor={b.hasta ?? ""}>{fecha(b.hasta)}</Td>
               <Td className="text-center">
                 <Button size="sm" variant="outline" onClick={() => desbloquear(() => api("POST", "/bloqueos/desbloquear", { ip: b.ip }))}>
                   Desbloquear
@@ -470,7 +470,7 @@ function Bloqueos({ onCambio }: { onCambio: number }) {
               </Td>
               <Td className="font-medium">{c.usuario}</Td>
               <Td>{c.intentos}</Td>
-              <Td className="whitespace-nowrap text-muted-foreground">{fecha(c.hasta)}</Td>
+              <Td className="whitespace-nowrap text-muted-foreground" valor={c.hasta ?? ""}>{fecha(c.hasta)}</Td>
               <Td className="text-center">
                 <Button size="sm" variant="outline" onClick={() => desbloquear(() => api("POST", `/operadores/${c.id}/desbloquear`, {}))}>
                   Desbloquear
@@ -488,6 +488,12 @@ function Actividad() {
   const { avisarError } = useApp();
   const [datos, setDatos] = React.useState<PaginaEventos | null>(null);
   const [buscar, setBuscar] = React.useState("");
+  // El registro está paginado: lo ordena el servidor. Por omisión, lo más reciente primero.
+  const { orden, ordenarPor } = useOrden<"fecha" | "operador" | "accion" | "objeto" | "ip">("fecha", "actividad-datos", false);
+  const ordenar = (campo: "fecha" | "operador" | "accion" | "objeto" | "ip") => {
+    ordenarPor(campo);
+    setPagina(1);
+  };
   const [pagina, setPagina] = React.useState(1);
   const [tamano, setTamano] = React.useState(25);
   const [recarga, setRecarga] = React.useState(0);
@@ -497,6 +503,8 @@ function Actividad() {
       try {
         const q = new URLSearchParams({ pagina: String(pagina), tamano: String(tamano) });
         if (buscar.trim()) q.set("buscar", buscar.trim());
+        q.set("orden", orden.campo);
+        q.set("dir", orden.asc ? "asc" : "desc");
         const r = await api<PaginaEventos>("GET", `/auditoria?${q}`);
         setDatos(r);
         // El servidor corrige una página que ya no existe.
@@ -534,14 +542,24 @@ function Actividad() {
         </div>
       }
     >
-      <Table>
+      <Table id="actividad" ordenLocal={false}>
         <thead>
           <tr>
-            <Th>Fecha</Th>
-            <Th>Operador</Th>
-            <Th>Qué pasó</Th>
-            <Th>Sobre</Th>
-            <Th>Dirección IP</Th>
+            <ThOrden campo="fecha" orden={orden} onOrden={ordenar}>
+              Fecha
+            </ThOrden>
+            <ThOrden campo="operador" orden={orden} onOrden={ordenar}>
+              Operador
+            </ThOrden>
+            <ThOrden campo="accion" orden={orden} onOrden={ordenar}>
+              Qué pasó
+            </ThOrden>
+            <ThOrden campo="objeto" orden={orden} onOrden={ordenar}>
+              Sobre
+            </ThOrden>
+            <ThOrden campo="ip" orden={orden} onOrden={ordenar}>
+              Dirección IP
+            </ThOrden>
           </tr>
         </thead>
         <tbody>
@@ -554,7 +572,7 @@ function Actividad() {
           )}
           {datos?.eventos.map((e) => (
             <tr key={e.id}>
-              <Td className="whitespace-nowrap text-muted-foreground">{fecha(e.fecha)}</Td>
+              <Td className="whitespace-nowrap text-muted-foreground" valor={e.fecha ?? ""}>{fecha(e.fecha)}</Td>
               <Td className="font-medium">{e.operador}</Td>
               <Td>
                 {e.accion === "sesion.fallida" || e.accion === "config.rechazada" || e.accion === "ip.bloqueada" ? (

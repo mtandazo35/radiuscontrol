@@ -245,6 +245,18 @@ func (a *App) listarAutenticaciones(w http.ResponseWriter, r *http.Request, _ *O
 	if router < 0 {
 		router = 0
 	}
+	// Orden: solo columnas de esta lista; lo que llega en la URL elige una, nunca se copia.
+	ordenSQL, ok := map[string]string{
+		"fecha": "id", "resultado": "resultado", "usuario": "lower(usuario)", "router": "lower(router_nombre)",
+		"empresa": "lower(empresa_nombre)", "origen": "origen", "metodo": "metodo", "detalle": "lower(grupo)",
+	}[q.Get("orden")]
+	if !ok {
+		ordenSQL = "id"
+	}
+	sentido := "DESC"
+	if q.Get("dir") == "asc" {
+		sentido = "ASC"
+	}
 	const filtro = `($1 = '' OR resultado = $1)
 		AND ($2 = '' OR usuario ILIKE '%' || $2 || '%' OR router_nombre ILIKE '%' || $2 || '%'
 		     OR empresa_nombre ILIKE '%' || $2 || '%' OR ip_origen LIKE $2 || '%')
@@ -267,7 +279,7 @@ func (a *App) listarAutenticaciones(w http.ResponseWriter, r *http.Request, _ *O
 
 	filas, err := a.db.Query(ctx, `SELECT id, fecha, resultado, usuario, ip_origen, router_id,
 		router_nombre, empresa_nombre, nas_identifier, nas_ip, origen, metodo, grupo, motivo
-		FROM autenticaciones WHERE `+filtro+` ORDER BY id DESC LIMIT $4 OFFSET $5`,
+		FROM autenticaciones WHERE `+filtro+` ORDER BY `+ordenSQL+` `+sentido+`, id DESC LIMIT $4 OFFSET $5`,
 		resultado, buscar, router, tamano, (pagina-1)*tamano)
 	if err != nil {
 		return err

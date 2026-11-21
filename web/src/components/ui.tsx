@@ -86,14 +86,263 @@ export function Badge({
   return <span className={cn(badgeVariants({ variant }), className)} {...props} />;
 }
 
-export function Table({ className, ...props }: React.TableHTMLAttributes<HTMLTableElement>) {
+// ---------------------------------------------------------------- tablas
+//
+// Una tabla con `id` deja arrastrar sus columnas para cambiarlas de sitio y
+// ordenar las filas pulsando un encabezado. Las dos cosas se recuerdan mientras
+// dure la sesión del navegador (sessionStorage) y se olvidan al salir del panel.
+
+const PREFIJO_TABLA = "rc-tabla:";
+
+function leerSesion<T>(clave: string): T | null {
+  try {
+    const v = sessionStorage.getItem(PREFIJO_TABLA + clave);
+    return v ? (JSON.parse(v) as T) : null;
+  } catch {
+    return null;
+  }
+}
+
+function guardarSesion(clave: string, valor: unknown) {
+  try {
+    if (valor === null) sessionStorage.removeItem(PREFIJO_TABLA + clave);
+    else sessionStorage.setItem(PREFIJO_TABLA + clave, JSON.stringify(valor));
+  } catch {
+    // Sin almacenamiento disponible: el orden vale solo hasta recargar.
+  }
+}
+
+// Al cerrar la sesión del panel se olvida cómo quedó cada tabla.
+export function olvidarTablas() {
+  try {
+    for (const k of Object.keys(sessionStorage)) {
+      if (k.startsWith(PREFIJO_TABLA)) sessionStorage.removeItem(k);
+    }
+  } catch {
+    // Nada que olvidar.
+  }
+}
+
+function esPermutacion(o: unknown, n: number): o is number[] {
+  return Array.isArray(o) && o.length === n && [...o].sort((a, b) => a - b).every((v, k) => v === k);
+}
+
+type Elemento = React.ReactElement<{ children?: React.ReactNode; className?: string; valor?: Valor; texto?: unknown; sinOrden?: boolean; title?: string }>;
+type Valor = string | number | boolean | null | undefined;
+
+const esElemento = (n: React.ReactNode): n is Elemento => React.isValidElement(n);
+const esFila = (n: React.ReactNode): n is Elemento => esElemento(n) && n.type === "tr";
+
+// Texto de una celda, para ordenar cuando no trae un valor explícito.
+function textoDe(nodo: React.ReactNode): string {
+  if (nodo === null || nodo === undefined || typeof nodo === "boolean") return "";
+  if (typeof nodo === "string" || typeof nodo === "number") return String(nodo);
+  if (Array.isArray(nodo)) return nodo.map(textoDe).join(" ");
+  if (esElemento(nodo)) return typeof nodo.props.texto === "string" ? nodo.props.texto : textoDe(nodo.props.children);
+  return "";
+}
+
+function valorDe(celda: React.ReactNode): string | number {
+  if (!esElemento(celda)) return "";
+  const v = celda.props.valor;
+  if (typeof v === "number") return v;
+  if (typeof v === "boolean") return v ? 1 : 0;
+  if (typeof v === "string") return v;
+  return textoDe(celda.props.children).trim();
+}
+
+function compararValores(a: string | number, b: string | number) {
+  if (typeof a === "number" && typeof b === "number") return a - b;
+  return comparar(String(a), String(b));
+}
+
+// Control de ordenación de un encabezado. Es un <span> con papel de botón y no
+// un <button> para que arrastrar el encabezado funcione en todos los navegadores.
+function BotonOrden({ activo, asc, onPulsar, children }: { activo: boolean; asc: boolean; onPulsar: () => void; children: React.ReactNode }) {
+  const Icono = !activo ? ChevronsUpDown : asc ? ArrowUp : ArrowDown;
   return (
-    <div className="w-full overflow-x-auto">
-      <table className={cn("w-full caption-bottom text-sm [&_tbody_tr:hover]:bg-muted/50 [&_tbody_tr]:transition-colors", className)} {...props} />
-    </div>
+    <span
+      role="button"
+      tabIndex={0}
+      onClick={onPulsar}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onPulsar();
+        }
+      }}
+      title="Pulsa para ordenar; arrastra para mover la columna (o Alt + flechas)"
+      className={cn(
+        "-mx-1 inline-flex cursor-pointer items-center gap-1 rounded px-1 py-0.5 uppercase tracking-wider transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        activo && "text-foreground",
+      )}
+    >
+      {children}
+      <Icono className={cn("size-3", !activo && "opacity-50")} aria-hidden="true" />
+    </span>
   );
 }
-export function Th({ className, ...props }: React.ThHTMLAttributes<HTMLTableCellElement>) {
+
+interface PropsTabla extends React.TableHTMLAttributes<HTMLTableElement> {
+  // Nombre de la tabla: activa mover columnas, ordenar y recordarlo en la sesión.
+  id?: string;
+  // false cuando las filas las ordena el servidor (tablas paginadas).
+  ordenLocal?: boolean;
+}
+
+export function Table({ id, ordenLocal = true, className, children, ...props }: PropsTabla) {
+  const [columnas, setColumnas] = React.useState<number[] | null>(() => (id ? leerSesion<number[]>(`${id}:columnas`) : null));
+  const [orden, setOrden] = React.useState<{ col: number; asc: boolean } | null>(() =>
+    id && ordenLocal ? leerSesion<{ col: number; asc: boolean }>(`${id}:orden`) : null,
+  );
+  // Posiciones visibles de la columna que se arrastra y de la que está debajo.
+  const [arrastrada, setArrastrada] = React.useState<number | null>(null);
+  const [sobre, setSobre] = React.useState<number | null>(null);
+
+  let contenido: React.ReactNode = children;
+  let movidas = false;
+
+  if (id) {
+    const partes = React.Children.toArray(children);
+    const cabeza = partes.find((x) => esElemento(x) && x.type === "thead") as Elemento | undefined;
+    const filaCabeza = cabeza ? React.Children.toArray(cabeza.props.children).find(esFila) : undefined;
+    const n = filaCabeza ? React.Children.toArray(filaCabeza.props.children).length : 0;
+    const vista = esPermutacion(columnas, n) ? columnas : Array.from({ length: n }, (_, k) => k);
+    movidas = vista.some((v, k) => v !== k);
+
+    const mover = (de: number, a: number) => {
+      if (de === a || a < 0 || a >= n) return;
+      const nueva = [...vista];
+      const [quitada] = nueva.splice(de, 1);
+      nueva.splice(a, 0, quitada);
+      setColumnas(nueva);
+      guardarSesion(`${id}:columnas`, nueva);
+    };
+    const soltar = () => {
+      setArrastrada(null);
+      setSobre(null);
+    };
+    const ordenarPor = (col: number) => {
+      // Ascendente, descendente y, a la tercera, como venía.
+      const nuevo = orden?.col !== col ? { col, asc: true } : orden.asc ? { col, asc: false } : null;
+      setOrden(nuevo);
+      guardarSesion(`${id}:orden`, nuevo);
+    };
+
+    const encabezado = (celda: React.ReactNode, original: number, pos: number) => {
+      if (!esElemento(celda)) return celda;
+      const ordenable = ordenLocal && celda.type === Th && !celda.props.sinOrden;
+      const activo = orden?.col === original;
+      const extra = {
+        draggable: true,
+        onDragStart: (e: React.DragEvent) => {
+          setArrastrada(pos);
+          e.dataTransfer.effectAllowed = "move";
+          e.dataTransfer.setData("text/plain", String(pos));
+        },
+        onDragOver: (e: React.DragEvent) => {
+          if (arrastrada === null) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
+          if (sobre !== pos) setSobre(pos);
+        },
+        onDrop: (e: React.DragEvent) => {
+          e.preventDefault();
+          if (arrastrada !== null) mover(arrastrada, pos);
+          soltar();
+        },
+        onDragEnd: soltar,
+        onKeyDown: (e: React.KeyboardEvent) => {
+          if (!e.altKey || (e.key !== "ArrowLeft" && e.key !== "ArrowRight")) return;
+          e.preventDefault();
+          mover(pos, pos + (e.key === "ArrowLeft" ? -1 : 1));
+        },
+        title: celda.props.title ?? "Arrastra para mover la columna",
+        className: cn(
+          celda.props.className,
+          "cursor-grab select-none active:cursor-grabbing",
+          arrastrada === pos && "opacity-50",
+          sobre === pos && arrastrada !== null && arrastrada !== pos && "bg-primary/15 shadow-[inset_2px_0_0_hsl(var(--primary))]",
+        ),
+        ...(ordenable ? { "aria-sort": activo ? (orden.asc ? "ascending" : "descending") : "none" } : {}),
+      };
+      return React.cloneElement(
+        celda as React.ReactElement<Record<string, unknown>>,
+        extra,
+        ordenable ? (
+          <BotonOrden activo={activo} asc={activo ? orden.asc : true} onPulsar={() => ordenarPor(original)}>
+            {celda.props.children}
+          </BotonOrden>
+        ) : (
+          celda.props.children
+        ),
+      );
+    };
+
+    contenido = partes.map((parte) => {
+      if (!esElemento(parte)) return parte;
+      if (parte.type === "thead") {
+        const filas = React.Children.toArray(parte.props.children).map((fila) => {
+          if (!esFila(fila)) return fila;
+          const celdas = React.Children.toArray(fila.props.children);
+          if (celdas.length !== n) return fila;
+          return React.cloneElement(fila, undefined, vista.map((original, pos) => encabezado(celdas[original], original, pos)));
+        });
+        return React.cloneElement(parte, undefined, filas);
+      }
+      if (parte.type === "tbody") {
+        const otras: React.ReactNode[] = [];
+        const datos: { fila: Elemento; celdas: React.ReactNode[] }[] = [];
+        for (const fila of React.Children.toArray(parte.props.children)) {
+          const celdas = esFila(fila) ? React.Children.toArray(fila.props.children) : [];
+          if (esFila(fila) && celdas.length === n) datos.push({ fila, celdas });
+          else otras.push(fila);
+        }
+        if (orden && orden.col < n) {
+          const sentido = orden.asc ? 1 : -1;
+          datos.sort((x, y) => compararValores(valorDe(x.celdas[orden.col]), valorDe(y.celdas[orden.col])) * sentido);
+        }
+        return React.cloneElement(parte, undefined, [
+          ...otras,
+          ...datos.map(({ fila, celdas }) => React.cloneElement(fila, undefined, vista.map((original) => celdas[original]))),
+        ]);
+      }
+      return parte;
+    });
+  }
+
+  const restablecer = () => {
+    if (!id) return;
+    setColumnas(null);
+    setOrden(null);
+    guardarSesion(`${id}:columnas`, null);
+    guardarSesion(`${id}:orden`, null);
+  };
+
+  return (
+    <>
+      <div className="w-full overflow-x-auto">
+        <table className={cn("w-full caption-bottom text-sm [&_tbody_tr:hover]:bg-muted/50 [&_tbody_tr]:transition-colors", className)} {...props}>
+          {contenido}
+        </table>
+      </div>
+      {id && (movidas || orden !== null) && (
+        <div className="flex justify-end border-t px-4 py-1.5">
+          <button
+            type="button"
+            onClick={restablecer}
+            className="rounded font-sans text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            Restablecer columnas y orden
+          </button>
+        </div>
+      )}
+    </>
+  );
+}
+
+// sinOrden: la columna no se puede ordenar (por ejemplo, la de acciones).
+export function Th({ className, sinOrden: _sinOrden, ...props }: React.ThHTMLAttributes<HTMLTableCellElement> & { sinOrden?: boolean }) {
   return (
     <th
       className={cn("h-9 whitespace-nowrap bg-muted/40 px-4 text-left align-middle text-[11px] font-semibold uppercase tracking-wider text-muted-foreground first:rounded-tl-lg last:rounded-tr-lg", className)}
@@ -101,7 +350,10 @@ export function Th({ className, ...props }: React.ThHTMLAttributes<HTMLTableCell
     />
   );
 }
-export function Td({ className, ...props }: React.TdHTMLAttributes<HTMLTableCellElement>) {
+
+// valor: por lo que se ordena la celda cuando su texto no sirve (una fecha
+// escrita «21/11/26» se ordena por su fecha real, un número por su número).
+export function Td({ className, valor: _valor, ...props }: React.TdHTMLAttributes<HTMLTableCellElement> & { valor?: Valor }) {
   return <td className={cn("border-t px-4 py-2.5 align-middle", className)} {...props} />;
 }
 
@@ -175,9 +427,18 @@ export interface Orden<C extends string> {
   asc: boolean;
 }
 
-export function useOrden<C extends string>(inicial: C) {
-  const [orden, setOrden] = React.useState<Orden<C>>({ campo: inicial, asc: true });
-  const ordenarPor = React.useCallback((campo: C) => setOrden((o) => ({ campo, asc: o.campo === campo ? !o.asc : true })), []);
+// clave: nombre con el que el orden se recuerda durante la sesión.
+export function useOrden<C extends string>(inicial: C, clave?: string, ascendente = true) {
+  const [orden, setOrden] = React.useState<Orden<C>>(() => (clave ? leerSesion<Orden<C>>(`${clave}:orden`) : null) ?? { campo: inicial, asc: ascendente });
+  const ordenarPor = React.useCallback(
+    (campo: C) =>
+      setOrden((o) => {
+        const nuevo = { campo, asc: o.campo === campo ? !o.asc : true };
+        if (clave) guardarSesion(`${clave}:orden`, nuevo);
+        return nuevo;
+      }),
+    [clave],
+  );
   return { orden, ordenarPor };
 }
 
@@ -193,31 +454,20 @@ export function ThOrden<C extends string>({
   campo,
   orden,
   onOrden,
-  className,
   children,
+  ...resto
 }: {
   campo: C;
   orden: Orden<C>;
   onOrden: (campo: C) => void;
-  className?: string;
   children: React.ReactNode;
-}) {
+} & Omit<React.ThHTMLAttributes<HTMLTableCellElement>, "children">) {
   const activo = orden.campo === campo;
-  const Icono = !activo ? ChevronsUpDown : orden.asc ? ArrowUp : ArrowDown;
   return (
-    <Th className={className} aria-sort={activo ? (orden.asc ? "ascending" : "descending") : "none"}>
-      <button
-        type="button"
-        onClick={() => onOrden(campo)}
-        title="Ordenar por esta columna"
-        className={cn(
-          "-mx-1 inline-flex items-center gap-1 rounded px-1 py-0.5 uppercase tracking-wider transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-          activo && "text-foreground",
-        )}
-      >
+    <Th {...resto} aria-sort={activo ? (orden.asc ? "ascending" : "descending") : "none"}>
+      <BotonOrden activo={activo} asc={orden.asc} onPulsar={() => onOrden(campo)}>
         {children}
-        <Icono className={cn("size-3", !activo && "opacity-50")} aria-hidden="true" />
-      </button>
+      </BotonOrden>
     </Th>
   );
 }

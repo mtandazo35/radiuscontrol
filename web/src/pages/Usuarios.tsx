@@ -89,7 +89,7 @@ export default function Usuarios() {
   const [buscar, setBuscar] = React.useState("");
   const [fGrupo, setFGrupo] = React.useState("");
   const [fEstado, setFEstado] = React.useState("");
-  const { orden, ordenarPor } = useOrden<"usuario" | "grupo" | "estado" | "clave">("usuario");
+  const { orden, ordenarPor } = useOrden<"usuario" | "grupo" | "estado" | "clave">("usuario", "usuarios-datos");
   const conFiltros = Boolean(buscar.trim() || fGrupo || fEstado);
   const gruposEnUso = React.useMemo(() => [...new Set((lista ?? []).map((u) => u.grupo))].sort(comparar), [lista]);
   const visibles = React.useMemo(() => {
@@ -266,7 +266,7 @@ export default function Usuarios() {
       </div>
 
       <Card>
-        <Table>
+        <Table id="usuarios">
           <thead>
             <tr>
               <ThOrden campo="usuario" orden={orden} onOrden={ordenarPor}>
@@ -281,7 +281,7 @@ export default function Usuarios() {
               <ThOrden campo="clave" orden={orden} onOrden={ordenarPor}>
                 Contraseña cambiada
               </ThOrden>
-              <Th className="text-center">Acciones</Th>
+              <Th sinOrden className="text-center">Acciones</Th>
             </tr>
           </thead>
           <tbody>
@@ -302,7 +302,7 @@ export default function Usuarios() {
                 <Td>
                   <Badge variant={u.activo ? "success" : "muted"}>{u.activo ? "Activo" : "Suspendido"}</Badge>
                 </Td>
-                <Td className="whitespace-nowrap text-muted-foreground">{fecha(u.clave_cambiada)}</Td>
+                <Td className="whitespace-nowrap text-muted-foreground" valor={u.clave_cambiada ?? ""}>{fecha(u.clave_cambiada)}</Td>
                 <Td>
                   <div className="flex flex-nowrap items-center justify-center gap-1 whitespace-nowrap">
                     <Button

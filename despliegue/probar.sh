@@ -312,6 +312,18 @@ comprobar "Registro: el filtro por router solo devuelve logins de ese router" \
 api GET "/api/autenticaciones?router=999999999"
 comprobar "Registro: el filtro por un router que no existe no devuelve nada" \
     "$([ "$(printf '%s' "$CUERPO" | jq '.total')" -eq 0 ]; echo $?)"
+api GET "/api/autenticaciones?buscar=$USUARIO_PRUEBA&orden=fecha&dir=asc&tamano=100"
+comprobar "Registro: ordenar por fecha ascendente devuelve primero lo más antiguo" \
+    "$(printf '%s' "$CUERPO" | jq -e '[.autenticaciones[].id] as $i | ($i | length) > 1 and $i == ($i | sort)' >/dev/null; echo $?)"
+api GET "/api/autenticaciones?buscar=$USUARIO_PRUEBA&orden=resultado&dir=asc&tamano=100"
+comprobar "Registro: ordenar por resultado agrupa aceptados antes que rechazados" \
+    "$(printf '%s' "$CUERPO" | jq -e '[.autenticaciones[].resultado] as $r | $r == ($r | sort)' >/dev/null; echo $?)"
+api GET "/api/autenticaciones?buscar=$USUARIO_PRUEBA&orden=id;DROP&dir=x&tamano=5"
+comprobar "Registro: un orden que no está en la lista se ignora y responde como siempre, 200" \
+    "$(codigo_es 200 && printf '%s' "$CUERPO" | jq -e '[.autenticaciones[].id] as $i | $i == ($i | sort | reverse)' >/dev/null; echo $?)"
+api GET "/api/auditoria?orden=operador&dir=asc&tamano=50"
+comprobar "Actividad: ordenar por operador devuelve los operadores en orden, 200" \
+    "$(codigo_es 200 && printf '%s' "$CUERPO" | jq -e '[.eventos[].operador | ascii_downcase] as $o | $o == ($o | sort)' >/dev/null; echo $?)"
 api GET "/api/resumen"
 comprobar "Inicio: el resumen cuenta los logins, la serie y el router de prueba" \
     "$(codigo_es 200 && printf '%s' "$CUERPO" | jq -e '.aceptados_24h > 0 and .rechazados_24h > 0 and (.serie | length) > 0 and .routers_total >= 1 and any(.routers[]; .nombre == "prueba-automatica" and .aceptados > 0 and .redes >= 1 and .ultimo != null) and (.rechazados | length) > 0 and .bloqueos_ip != null and (.activos | length) > 0 and (.motivos | length) > 0 and (.recientes | length) > 0 and .horas_serie == 12 and .minutos_tramo == 10' >/dev/null; echo $?)" \

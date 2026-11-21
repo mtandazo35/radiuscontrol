@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Button, Dialog, DialogContent, DialogFooter } from "@/components/ui";
+import { Button, Dialog, DialogContent, DialogFooter, olvidarTablas } from "@/components/ui";
 import { api, ErrorApi, type Estado, type Operador } from "@/lib/api";
 
 interface Aviso {
@@ -51,6 +51,11 @@ export function ProveedorApp({ children }: { children: React.ReactNode }) {
     window.addEventListener("rc:sesion-caducada", caducada);
     return () => window.removeEventListener("rc:sesion-caducada", caducada);
   }, []);
+
+  // Sin sesión abierta no se recuerda el orden de las tablas.
+  React.useEffect(() => {
+    if (!cargando && !operador) olvidarTablas();
+  }, [cargando, operador]);
 
   const refrescarEstado = React.useCallback(async () => {
     try {

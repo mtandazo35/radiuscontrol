@@ -98,7 +98,7 @@ export default function Routers() {
   const [fEmpresa, setFEmpresa] = React.useState("");
   const [fAcceso, setFAcceso] = React.useState("");
   const [fEstado, setFEstado] = React.useState("");
-  const { orden, ordenarPor } = useOrden<"nombre" | "empresa" | "estado" | "acceso" | "secreto">("nombre");
+  const { orden, ordenarPor } = useOrden<"nombre" | "empresa" | "estado" | "acceso" | "secreto">("nombre", "routers-datos");
   const conFiltros = Boolean(buscar.trim() || fEmpresa || fAcceso || fEstado);
   const limpiarFiltros = () => {
     setBuscar("");
@@ -302,7 +302,7 @@ export default function Routers() {
       </div>
 
       <Card>
-        <Table>
+        <Table id="routers">
           <thead>
             <tr>
               <ThOrden campo="nombre" orden={orden} onOrden={ordenarPor}>
@@ -321,7 +321,7 @@ export default function Routers() {
               <ThOrden campo="secreto" orden={orden} onOrden={ordenarPor}>
                 Secreto rotado
               </ThOrden>
-              <Th className="text-center">Acciones</Th>
+              <Th sinOrden className="text-center">Acciones</Th>
             </tr>
           </thead>
           <tbody>
@@ -355,7 +355,7 @@ export default function Routers() {
                 <Td>
                   <InsigniaAcceso r={r} />
                 </Td>
-                <Td className="whitespace-nowrap text-muted-foreground">{fecha(r.secreto_rotado)}</Td>
+                <Td className="whitespace-nowrap text-muted-foreground" valor={r.secreto_rotado ?? ""}>{fecha(r.secreto_rotado)}</Td>
                 <Td>
                   <div className="flex flex-nowrap items-center justify-center gap-1 whitespace-nowrap">
                     <Button
