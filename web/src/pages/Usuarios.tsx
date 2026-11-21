@@ -1,4 +1,4 @@
-import { Plus } from "lucide-react";
+import { Eye, EyeOff, Plus } from "lucide-react";
 import * as React from "react";
 import { Badge, Button, Card, Dialog, DialogContent, DialogFooter, EstadoVacio, Input, Label, Select, Table, Td, Th, ThOrden, comparar, useOrden } from "@/components/ui";
 import { api, type RespuestaUsuario, type Usuario } from "@/lib/api";
@@ -17,12 +17,41 @@ interface Formulario {
 const vacio: Formulario = { id: null, usuario: "", nombre: "", grupo: "full", clave: "", activo: true };
 const gruposBase = ["full", "write", "read"];
 
+// Campo de contraseña con un botón para verla mientras se escribe.
+function CampoClave({ id, valor, onValor, enfocar }: { id: string; valor: string; onValor: (v: string) => void; enfocar?: boolean }) {
+  const [ver, setVer] = React.useState(false);
+  return (
+    <div className="relative">
+      <Input
+        id={id}
+        className="pr-10 font-mono"
+        type={ver ? "text" : "password"}
+        autoComplete="new-password"
+        autoFocus={enfocar}
+        placeholder="Vacío: se genera una aleatoria"
+        value={valor}
+        onChange={(e) => onValor(e.target.value)}
+      />
+      <button
+        type="button"
+        onClick={() => setVer((v) => !v)}
+        aria-label={ver ? "Ocultar la contraseña" : "Mostrar la contraseña"}
+        aria-pressed={ver}
+        className="absolute right-0 top-0 flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        {ver ? <EyeOff className="size-4" aria-hidden="true" /> : <Eye className="size-4" aria-hidden="true" />}
+      </button>
+    </div>
+  );
+}
+
 export default function Usuarios() {
   const { avisar, avisarError, confirmar, refrescarEstado } = useApp();
   const [lista, setLista] = React.useState<Usuario[] | null>(null);
   const [form, setForm] = React.useState<Formulario | null>(null);
   const [ocupado, setOcupado] = React.useState(false);
   const [otroGrupo, setOtroGrupo] = React.useState(false);
+  const [cambio, setCambio] = React.useState<{ usuario: Usuario; clave: string } | null>(null);
 
   const [buscar, setBuscar] = React.useState("");
   const [fGrupo, setFGrupo] = React.useState("");
@@ -63,12 +92,18 @@ export default function Usuarios() {
     await refrescarEstado();
   };
 
-  const mostrarClave = (r: RespuestaUsuario, titulo: string) => {
-    if (!r.clave_generada) return;
+  // La contraseña se enseña una vez al terminar, tanto si la generó el sistema
+  // como si la escribió el operador (esa sale de lo que acaba de teclear: el
+  // servidor solo guarda su hash y no puede devolverla).
+  const mostrarClave = (r: RespuestaUsuario, titulo: string, escrita: string) => {
+    const clave = r.clave_generada || escrita;
+    if (!clave) return;
     avisar({
       titulo,
-      mensaje: "Esta contraseña se muestra una sola vez. Entrégala a la persona; el cambio se aplica solo en unos segundos.",
-      copiable: r.clave_generada,
+      mensaje: r.clave_generada
+        ? "Contraseña generada por el sistema. Se muestra una sola vez: cópiala y entrégala a la persona. El cambio se aplica solo en unos segundos."
+        : "Esta es la contraseña que escribiste. Se muestra una sola vez: después no se puede consultar, porque solo se guarda su hash. El cambio se aplica solo en unos segundos.",
+      copiable: clave,
     });
   };
 
@@ -93,9 +128,10 @@ export default function Usuarios() {
           activo: form.activo,
         });
       }
+      const escrita = form.id === null ? form.clave : "";
       setForm(null);
       await tras();
-      mostrarClave(r, `Usuario «${r.usuario.usuario}» creado`);
+      mostrarClave(r, `Usuario «${r.usuario.usuario}» creado`, escrita);
     } catch (err) {
       avisarError(err);
     } finally {
@@ -112,19 +148,20 @@ export default function Usuarios() {
     }
   };
 
-  const nuevaClave = async (u: Usuario) => {
-    const ok = await confirmar(
-      "Restablecer la contraseña",
-      `Se generará una contraseña nueva para «${u.usuario}». La anterior dejará de servir en unos segundos.`,
-      "Restablecer",
-    );
-    if (!ok) return;
+  const nuevaClave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!cambio) return;
+    const { usuario: u, clave } = cambio;
+    setOcupado(true);
     try {
-      const r = await api<RespuestaUsuario>("POST", `/usuarios/${u.id}/clave`, {});
+      const r = await api<RespuestaUsuario>("POST", `/usuarios/${u.id}/clave`, clave ? { clave } : {});
+      setCambio(null);
       await tras();
-      mostrarClave(r, `Contraseña nueva de «${u.usuario}»`);
-    } catch (e) {
-      avisarError(e);
+      mostrarClave(r, `Contraseña nueva de «${u.usuario}»`, clave);
+    } catch (err) {
+      avisarError(err);
+    } finally {
+      setOcupado(false);
     }
   };
 
@@ -241,7 +278,7 @@ export default function Usuarios() {
                     >
                       Editar
                     </Button>
-                    <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-foreground" onClick={() => nuevaClave(u)}>
+                    <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-foreground" onClick={() => setCambio({ usuario: u, clave: "" })}>
                       Restablecer contraseña
                     </Button>
                     <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-foreground" onClick={() => alternar(u)}>
@@ -307,15 +344,10 @@ export default function Usuarios() {
               {form.id === null && (
                 <div className="space-y-2">
                   <Label htmlFor="clave">Contraseña</Label>
-                  <Input
-                    id="clave"
-                    type="password"
-                    autoComplete="new-password"
-                    placeholder="Vacío: se genera una aleatoria"
-                    value={form.clave}
-                    onChange={(e) => setForm({ ...form, clave: e.target.value })}
-                  />
-                  <p className="text-xs text-muted-foreground">Mínimo 8 caracteres. Solo se guarda su hash, cifrado.</p>
+                  <CampoClave id="clave" valor={form.clave} onValor={(v) => setForm({ ...form, clave: v })} />
+                  <p className="text-xs text-muted-foreground">
+                    Mínimo 8 caracteres. Al guardar se te muestra una vez para que la copies; después solo queda su hash, cifrado.
+                  </p>
                 </div>
               )}
               <DialogFooter>
@@ -324,6 +356,31 @@ export default function Usuarios() {
                 </Button>
                 <Button type="submit" disabled={ocupado}>
                   {ocupado ? "Guardando…" : "Guardar"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        )}
+      </Dialog>
+
+      <Dialog open={cambio !== null} onOpenChange={(abierto) => !abierto && setCambio(null)}>
+        {cambio && (
+          <DialogContent titulo={`Restablecer la contraseña de «${cambio.usuario.usuario}»`}>
+            <form onSubmit={nuevaClave} className="space-y-4">
+              <p className="text-sm text-muted-foreground">La contraseña anterior dejará de servir en unos segundos.</p>
+              <div className="space-y-2">
+                <Label htmlFor="clave-nueva">Contraseña nueva</Label>
+                <CampoClave id="clave-nueva" enfocar valor={cambio.clave} onValor={(v) => setCambio({ ...cambio, clave: v })} />
+                <p className="text-xs text-muted-foreground">
+                  Mínimo 8 caracteres, o déjala vacía para que el sistema genere una. Al guardar se te muestra una vez para que la copies.
+                </p>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setCambio(null)}>
+                  Cancelar
+                </Button>
+                <Button type="submit" disabled={ocupado}>
+                  {ocupado ? "Guardando…" : "Restablecer"}
                 </Button>
               </DialogFooter>
             </form>
