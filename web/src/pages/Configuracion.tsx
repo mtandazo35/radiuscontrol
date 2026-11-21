@@ -4,6 +4,7 @@ import { useActualizacion, versionCorta } from "@/components/Actualizacion";
 import { Limpieza } from "@/components/Limpieza";
 import { Badge, Button, Card } from "@/components/ui";
 import { fecha, huellaCorta } from "@/lib/utils";
+import { Origenes } from "@/components/Origenes";
 import { useApp } from "../contexto";
 
 function Dato({ titulo, children }: { titulo: string; children: React.ReactNode }) {
@@ -203,6 +204,7 @@ export default function Configuracion() {
           {p && p.estado !== "ok" && p.estado !== "en-curso" && p.mensaje && <p className="mt-3 text-sm text-destructive">{p.mensaje}</p>}
           </Card>
           <AccesoServidor />
+          <Origenes />
         </section>
       )}
 

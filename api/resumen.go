@@ -36,6 +36,8 @@ type resumenCuenta struct {
 	Nombre string    `json:"nombre"`
 	Total  int       `json:"total"`
 	Ultimo time.Time `json:"ultimo"`
+	// Solo en la lista de orígenes: la descripción puesta a esa dirección.
+	Descripcion string `json:"descripcion,omitempty"`
 }
 
 type resumenReciente struct {
@@ -44,6 +46,7 @@ type resumenReciente struct {
 	Usuario   string    `json:"usuario"`
 	Router    string    `json:"router"`
 	Origen    string    `json:"origen"`
+	OrigenNombre string `json:"origen_nombre"`
 	Metodo    string    `json:"metodo"`
 	Motivo    string    `json:"motivo"`
 }
@@ -202,16 +205,23 @@ func (a *App) verResumen(w http.ResponseWriter, r *http.Request, op *Operador) e
 	if err != nil {
 		return err
 	}
+	for i := range origenes {
+		if err := a.db.QueryRow(ctx, `SELECT COALESCE(nombre_origen($1), '')`, origenes[i].Nombre).
+			Scan(&origenes[i].Descripcion); err != nil {
+			return err
+		}
+	}
 
 	recientes := []resumenReciente{}
-	filas, err = a.db.Query(ctx, `SELECT fecha, resultado, usuario, router_nombre, origen, metodo, motivo
+	filas, err = a.db.Query(ctx, `SELECT fecha, resultado, usuario, router_nombre, origen, metodo, motivo,
+		COALESCE(nombre_origen(origen), '')
 		FROM autenticaciones WHERE $1 = 0 OR router_id = $1 ORDER BY id DESC LIMIT 8`, router)
 	if err != nil {
 		return err
 	}
 	for filas.Next() {
 		var x resumenReciente
-		if err := filas.Scan(&x.Fecha, &x.Resultado, &x.Usuario, &x.Router, &x.Origen, &x.Metodo, &x.Motivo); err != nil {
+		if err := filas.Scan(&x.Fecha, &x.Resultado, &x.Usuario, &x.Router, &x.Origen, &x.Metodo, &x.Motivo, &x.OrigenNombre); err != nil {
 			filas.Close()
 			return err
 		}

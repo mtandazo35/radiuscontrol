@@ -1,5 +1,7 @@
+import { Pencil } from "lucide-react";
 import * as React from "react";
 import { Badge, Card, Copiable, EstadoVacio, Input, Paginacion, Table, Td, ThOrden, useOrden } from "@/components/ui";
+import { ModalOrigen, type BorradorOrigen } from "@/components/Origenes";
 import { BotonVaciar } from "@/components/Vaciar";
 import { api, type PaginaAutenticaciones } from "@/lib/api";
 import { cn, fecha, motivoLegible } from "@/lib/utils";
@@ -13,7 +15,9 @@ const filtros = [
 ];
 
 export default function Autenticaciones() {
-  const { avisarError } = useApp();
+  const { avisarError, operador } = useApp();
+  const admin = operador?.rol === "administrador";
+  const [borrador, setBorrador] = React.useState<BorradorOrigen | null>(null);
   const { routerId } = useFiltro();
   const [datos, setDatos] = React.useState<PaginaAutenticaciones | null>(null);
   const [resultado, setResultado] = React.useState("");
@@ -171,7 +175,21 @@ export default function Autenticaciones() {
                   </Td>
                   <Td className="py-2 font-sans text-sm">{a.empresa || "—"}</Td>
                   <Td className="py-2">
-                    <Copiable texto={a.origen} />
+                    <div className="flex items-center gap-1">
+                      <Copiable texto={a.origen} />
+                      {admin && a.origen && (
+                        <button
+                          type="button"
+                          onClick={() => setBorrador({ red: a.origen, nombre: a.origen_nombre, fija: true })}
+                          aria-label={a.origen_nombre ? `Cambiar la descripción de ${a.origen}` : `Poner una descripción a ${a.origen}`}
+                          title={a.origen_nombre ? "Cambiar la descripción" : "Poner una descripción a esta dirección"}
+                          className="rounded p-0.5 text-muted-foreground opacity-60 transition-opacity hover:text-foreground hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          <Pencil className="size-3.5" aria-hidden="true" />
+                        </button>
+                      )}
+                    </div>
+                    {a.origen_nombre && <div className="font-sans text-xs text-muted-foreground">{a.origen_nombre}</div>}
                   </Td>
                   <Td className="whitespace-nowrap py-2">{a.metodo || "—"}</Td>
                   <Td className="max-w-[20rem] py-2">
@@ -200,6 +218,7 @@ export default function Autenticaciones() {
           }}
         />
       </Card>
+      <ModalOrigen borrador={borrador} onCerrar={() => setBorrador(null)} onGuardado={() => cargar(true)} />
     </div>
   );
 }

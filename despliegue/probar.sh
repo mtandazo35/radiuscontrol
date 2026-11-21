@@ -324,6 +324,29 @@ comprobar "Registro: un orden que no está en la lista se ignora y responde como
 api GET "/api/auditoria?orden=operador&dir=asc&tamano=50"
 comprobar "Actividad: ordenar por operador devuelve los operadores en orden, 200" \
     "$(codigo_es 200 && printf '%s' "$CUERPO" | jq -e '[.eventos[].operador | ascii_downcase] as $o | $o == ($o | sort)' >/dev/null; echo $?)"
+api POST /api/origenes '{"red":"127.0.0.0/8","nombre":"Origen de prueba, red"}'
+comprobar "Orígenes: un administrador da nombre a una red, 200" "$(codigo_es 200; echo $?)"
+ORIGEN_RED_ID="$(printf '%s' "$CUERPO" | jq -r '.id')"
+api POST /api/origenes '{"red":"127.0.0.1","nombre":"Origen de prueba, equipo"}'
+ORIGEN_IP_ID="$(printf '%s' "$CUERPO" | jq -r '.id')"
+api GET "/api/autenticaciones?buscar=$USUARIO_PRUEBA&tamano=100"
+comprobar "Orígenes: las autenticaciones traen la descripción de la red más pequeña que contiene la dirección" \
+    "$(printf '%s' "$CUERPO" | jq -e '[.autenticaciones[] | select(.origen == "127.0.0.1")] | length > 0 and all(.origen_nombre == "Origen de prueba, equipo")' >/dev/null; echo $?)" \
+    "$(printf '%s' "$CUERPO" | jq -c '[.autenticaciones[] | {origen, origen_nombre}] | unique')"
+api POST /api/origenes '{"red":"127.0.0.1","nombre":"Origen de prueba, renombrado"}'
+comprobar "Orígenes: guardar otra vez la misma dirección le cambia el nombre en vez de duplicarla" \
+    "$(codigo_es 200 && [ "$(printf '%s' "$CUERPO" | jq -r '.id')" = "$ORIGEN_IP_ID" ]; echo $?)"
+api POST /api/origenes '{"red":"no es una ip","nombre":"x"}'
+comprobar "Orígenes: una dirección que no lo es se rechaza, 400" "$(codigo_es 400; echo $?)"
+api DELETE "/api/origenes/$ORIGEN_IP_ID"
+api GET "/api/autenticaciones?buscar=$USUARIO_PRUEBA&tamano=100"
+comprobar "Orígenes: al quitar el nombre del equipo vale el de la red" \
+    "$(printf '%s' "$CUERPO" | jq -e '[.autenticaciones[] | select(.origen == "127.0.0.1")] | length > 0 and all(.origen_nombre == "Origen de prueba, red")' >/dev/null; echo $?)"
+api DELETE "/api/origenes/$ORIGEN_RED_ID"
+comprobar "Orígenes: quitar un nombre, 200" "$(codigo_es 200; echo $?)"
+api GET /api/origenes
+comprobar "Orígenes: no queda ninguno de prueba" \
+    "$(printf '%s' "$CUERPO" | jq -e '[.[] | select(.nombre | startswith("Origen de prueba"))] | length == 0' >/dev/null; echo $?)"
 api GET "/api/resumen"
 comprobar "Inicio: el resumen cuenta los logins, la serie y el router de prueba" \
     "$(codigo_es 200 && printf '%s' "$CUERPO" | jq -e '.aceptados_24h > 0 and .rechazados_24h > 0 and (.serie | length) > 0 and .routers_total >= 1 and any(.routers[]; .nombre == "prueba-automatica" and .aceptados > 0 and .redes >= 1 and .ultimo != null) and (.rechazados | length) > 0 and .bloqueos_ip != null and (.activos | length) > 0 and (.motivos | length) > 0 and (.recientes | length) > 0 and .horas_serie == 12 and .minutos_tramo == 10' >/dev/null; echo $?)" \

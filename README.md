@@ -85,12 +85,18 @@ En todas las tablas:
 - Buscador, filtro rápido por resultado (todos, aceptados, rechazados) y paginación. Los
   rechazos van marcados en rojo con su motivo.
 - Las direcciones se copian con un clic.
+- **Orígenes con nombre**: a la dirección desde la que entra un sistema (un servidor de
+  respaldos, la oficina, el monitoreo) se le puede poner una descripción, que aparece bajo
+  la dirección. Se pone con el lápiz que hay junto a cada dirección, o por redes enteras
+  en Configuración.
 
 ### Configuración
 
 - **Versión**: versión instalada, búsqueda de actualizaciones e instalación desde el panel.
 - **Accesos al servidor**: quién puede llegar a la web del panel (443) y al SSH, gestionado
   de forma gráfica. Las reglas cargadas a mano en el servidor se muestran y no se tocan.
+- **Orígenes con nombre**: la lista de direcciones y redes con su descripción. Si una
+  dirección cae en varias redes, vale la descripción de la más pequeña.
 - **Estado**: lo guardado en el panel, lo aplicado, lo que FreeRADIUS tiene cargado y lo
   que el firewall deja pasar, con sus huellas para comprobar que coinciden.
 - **Limpieza de registros**: conservación configurable, limpieza programada, limpieza de

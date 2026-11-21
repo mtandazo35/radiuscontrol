@@ -48,6 +48,7 @@ interface Resumen {
     usuario: string;
     router: string;
     origen: string;
+    origen_nombre: string;
     metodo: string;
     motivo: string;
   }[];
@@ -57,6 +58,8 @@ interface Cuenta {
   nombre: string;
   total: number;
   ultimo: string;
+  // Solo en los orígenes: la descripción puesta a esa dirección.
+  descripcion?: string;
 }
 
 const periodos = [
@@ -413,7 +416,11 @@ export default function Inicio() {
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm">
                       <span className="font-mono font-medium">{x.usuario || "(sin usuario)"}</span>
-                      <span className="text-muted-foreground"> en {x.router || "router desconocido"}</span>
+                      <span className="text-muted-foreground">
+                        {" "}
+                        en {x.router || "router desconocido"}
+                        {x.origen_nombre && ` desde ${x.origen_nombre}`}
+                      </span>
                     </p>
                     <p className={cn("truncate text-[11px]", x.resultado === "aceptado" ? "text-success" : "text-destructive")}>
                       {x.resultado === "aceptado" ? `Aceptado por ${x.metodo || "RADIUS"}` : motivoLegible(x.motivo)}
@@ -449,7 +456,11 @@ export default function Inicio() {
           ayuda="Rechazos por dirección de quien intenta, 24 h"
           tono="fallo"
           vacio="Sin rechazos en las últimas 24 horas."
-          filas={datos.origenes.map((x) => ({ nombre: x.nombre || "Sin dirección de origen", total: x.total, detalle: `Último: ${hace(x.ultimo, datos.ahora)}` }))}
+          filas={datos.origenes.map((x) => ({
+            nombre: x.nombre || "Sin dirección de origen",
+            total: x.total,
+            detalle: `${x.descripcion ? `${x.descripcion}. ` : ""}Último: ${hace(x.ultimo, datos.ahora)}`,
+          }))}
         />
         <Lista
           titulo="Por qué se rechaza"

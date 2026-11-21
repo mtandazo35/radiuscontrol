@@ -349,6 +349,9 @@ func (a *App) rutas() http.Handler {
 	m.HandleFunc("POST /api/accesos/masivo", cambia(a.cambioMasivo))
 
 	m.HandleFunc("GET /api/empresas", a.privado(a.listarEmpresas))
+	m.HandleFunc("GET /api/origenes", a.privado(a.listarOrigenes))
+	m.HandleFunc("POST /api/origenes", a.admin(a.guardarOrigen))
+	m.HandleFunc("DELETE /api/origenes/{id}", a.admin(a.borrarOrigen))
 	m.HandleFunc("GET /api/autenticaciones", a.privado(a.listarAutenticaciones))
 
 	m.HandleFunc("GET /api/usuarios", a.privado(a.listarUsuarios))

@@ -134,6 +134,15 @@ export interface RespuestaRouter {
   script_rsc?: string;
 }
 
+// Descripción puesta a una dirección o red desde la que se entra a los routers.
+export interface Origen {
+  id: number;
+  red: string;
+  nombre: string;
+  operador: string;
+  creado: string;
+}
+
 export interface Usuario {
   id: number;
   usuario: string;
@@ -277,6 +286,8 @@ export interface Autenticacion {
   nas_identifier: string;
   nas_ip: string;
   origen: string;
+  // Descripción de esa dirección, si se le puso una; si no, vacío.
+  origen_nombre: string;
   metodo: string;
   grupo: string;
   motivo: string;

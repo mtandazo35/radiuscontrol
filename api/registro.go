@@ -31,6 +31,7 @@ type Autenticacion struct {
 	NASIdentifier string    `json:"nas_identifier"`
 	NASIP         string    `json:"nas_ip"`
 	Origen        string    `json:"origen"`
+	OrigenNombre  string    `json:"origen_nombre"`
 	Metodo        string    `json:"metodo"`
 	Grupo         string    `json:"grupo"`
 	Motivo        string    `json:"motivo"`
@@ -278,7 +279,8 @@ func (a *App) listarAutenticaciones(w http.ResponseWriter, r *http.Request, _ *O
 	}
 
 	filas, err := a.db.Query(ctx, `SELECT id, fecha, resultado, usuario, ip_origen, router_id,
-		router_nombre, empresa_nombre, nas_identifier, nas_ip, origen, metodo, grupo, motivo
+		router_nombre, empresa_nombre, nas_identifier, nas_ip, origen, metodo, grupo, motivo,
+		COALESCE(nombre_origen(origen), '')
 		FROM autenticaciones WHERE `+filtro+` ORDER BY `+ordenSQL+` `+sentido+`, id DESC LIMIT $4 OFFSET $5`,
 		resultado, buscar, router, tamano, (pagina-1)*tamano)
 	if err != nil {
@@ -289,7 +291,7 @@ func (a *App) listarAutenticaciones(w http.ResponseWriter, r *http.Request, _ *O
 	for filas.Next() {
 		var x Autenticacion
 		if err := filas.Scan(&x.ID, &x.Fecha, &x.Resultado, &x.Usuario, &x.IPOrigen, &x.RouterID,
-			&x.Router, &x.Empresa, &x.NASIdentifier, &x.NASIP, &x.Origen, &x.Metodo, &x.Grupo, &x.Motivo); err != nil {
+			&x.Router, &x.Empresa, &x.NASIdentifier, &x.NASIP, &x.Origen, &x.Metodo, &x.Grupo, &x.Motivo, &x.OrigenNombre); err != nil {
 			return err
 		}
 		lista = append(lista, &x)
