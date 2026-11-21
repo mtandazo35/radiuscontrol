@@ -255,11 +255,23 @@ compartido. Exigirla impide que alguien situado entre el router y el servidor fa
 altere un login (la vulnerabilidad conocida como BlastRADIUS, de 2024). Las versiones
 actuales de RouterOS la envían.
 
-Si un router tiene el secreto correcto y aun así nadie puede entrar, y sus intentos ni
-siquiera aparecen en Autenticaciones, es probable que su RouterOS no envíe la firma. Lo
-correcto es actualizar el router. Desmarcar «Exigir Message-Authenticator» en ese router
-lo deja funcionar sin la firma, pero también sin esa protección: úsalo solo como último
-recurso.
+Si un router tiene el secreto correcto y aun así nadie puede entrar, es probable que su
+RouterOS no envíe la firma. Lo correcto es actualizar el router. Desmarcar «Exigir
+Message-Authenticator» en ese router lo deja funcionar sin la firma, pero también sin esa
+protección: úsalo solo como último recurso.
+
+### Si un router no consigue autenticar
+
+1. **Mira el aviso «Peticiones descartadas»** en Inicio o en Autenticaciones. Si el router
+   aparece ahí, sus peticiones llegan pero FreeRADIUS las tira, y el aviso dice por qué:
+   - *El secreto no coincide*: copia el secreto en uso desde Routers, Editar, al router, o
+     escribe el del router como secreto nuevo.
+   - *Falta Message-Authenticator*: ver el apartado anterior.
+2. **Si no aparece en el aviso ni en Autenticaciones**, sus peticiones no llegan a
+   FreeRADIUS: casi siempre es que salen por una dirección que no está en sus redes de
+   origen (un NAT u otra salida a internet), y el firewall las para. Añade esa dirección
+   al router. Para averiguarla, en el servidor:
+   `tcpdump -n -q udp dst port 1812` mientras alguien intenta entrar al router.
 
 ## Qué se instala
 
