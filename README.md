@@ -34,9 +34,12 @@ En todas las tablas:
 - **Ordenar**: pulsa un encabezado para ordenar por esa columna; otra pulsación invierte
   el sentido. En Autenticaciones y en el registro de actividad, que están paginados,
   ordena el servidor sobre todos los registros, no solo sobre la página a la vista.
-- El orden de las columnas y de las filas se recuerda mientras dure la sesión y se olvida
-  al salir del panel. «Restablecer columnas y orden», bajo la tabla, lo devuelve a como
-  venía.
+- **Agrupar** (en Routers y en Usuarios MikroTik): el selector «Agrupar», junto a los
+  filtros, reparte las filas en bloques con un encabezado y su número de elementos. El
+  orden por columna se aplica dentro de cada bloque.
+- El orden de las columnas, el de las filas y la agrupación se recuerdan mientras dure la
+  sesión y se olvidan al salir del panel. «Restablecer columnas y orden», bajo la tabla,
+  devuelve columnas y orden a como venían.
 
 ### Inicio
 
