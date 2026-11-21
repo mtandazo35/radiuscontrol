@@ -48,6 +48,9 @@ function InsigniaAcceso({ r }: { r: Router }) {
   );
 }
 
+type Agrupacion = "" | "empresa" | "estado";
+const CLAVE_AGRUPAR = "rc-tabla:routers:agrupar";
+
 export default function Routers() {
   const { avisar, avisarError, confirmar, refrescarEstado } = useApp();
   const { routerId, recargarRouters } = useFiltro();
@@ -122,6 +125,43 @@ export default function Routers() {
       .filter((r) => !fEstado || r.activo === (fEstado === "activo"))
       .sort((x, y) => (comparar(valor(x), valor(y)) || comparar(x.nombre, y.nombre)) * (orden.asc ? 1 : -1));
   }, [lista, routerId, buscar, fEmpresa, fAcceso, fEstado, orden]);
+
+  // Agrupar la tabla por empresa o por estado. Se recuerda durante la sesión,
+  // como el orden de las columnas (y se olvida al salir del panel).
+  const [agrupar, setAgrupar] = React.useState<Agrupacion>(() => {
+    try {
+      const v = sessionStorage.getItem(CLAVE_AGRUPAR);
+      return v === "empresa" || v === "estado" ? v : "";
+    } catch {
+      return "";
+    }
+  });
+  const cambiarAgrupar = (v: Agrupacion) => {
+    setAgrupar(v);
+    try {
+      sessionStorage.setItem(CLAVE_AGRUPAR, v);
+    } catch {
+      // Sin almacenamiento: vale hasta recargar.
+    }
+  };
+  const grupos = React.useMemo(() => {
+    if (!visibles || visibles.length === 0) return [];
+    if (agrupar === "") return [{ clave: "todos", titulo: null as string | null, routers: visibles }];
+    const mapa = new Map<string, Router[]>();
+    for (const r of visibles) {
+      const k = agrupar === "empresa" ? r.empresa : r.activo ? "activo" : "suspendido";
+      mapa.set(k, [...(mapa.get(k) ?? []), r]);
+    }
+    // Empresas por nombre, con «Sin empresa» al final; activos antes que suspendidos.
+    const claves = [...mapa.keys()].sort((a, b) =>
+      agrupar === "estado" ? (a === "activo" ? -1 : 1) : !a ? 1 : !b ? -1 : comparar(a, b),
+    );
+    return claves.map((k) => ({
+      clave: k || "-",
+      titulo: agrupar === "empresa" ? k || "Sin empresa" : k === "activo" ? "Activos" : "Suspendidos",
+      routers: mapa.get(k) ?? [],
+    }));
+  }, [visibles, agrupar]);
 
   const tras = async () => {
     await cargar();
@@ -289,6 +329,11 @@ export default function Routers() {
           <option value="activo">Activos</option>
           <option value="suspendido">Suspendidos</option>
         </Select>
+        <Select className="col-span-1 w-full sm:w-auto" aria-label="Agrupar" value={agrupar} onChange={(e) => cambiarAgrupar(e.target.value as Agrupacion)}>
+          <option value="">Sin agrupar</option>
+          <option value="empresa">Por empresa</option>
+          <option value="estado">Por estado actual</option>
+        </Select>
         {conFiltros && (
           <Button variant="ghost" size="sm" className="col-span-2 justify-center sm:col-span-1 sm:justify-start" onClick={limpiarFiltros}>
             Limpiar filtros
@@ -324,15 +369,28 @@ export default function Routers() {
               <Th sinOrden className="text-center">Acciones</Th>
             </tr>
           </thead>
-          <tbody>
-            {visibles?.length === 0 && (
+          {visibles?.length === 0 && (
+            <tbody>
               <tr>
                 <Td colSpan={7}>
                   <EstadoVacio titulo={lista?.length ? "Ningún router coincide con la búsqueda o los filtros." : "Todavía no hay routers. Crea el primero con «Nuevo router»."} />
                 </Td>
               </tr>
-            )}
-            {visibles?.map((r) => (
+            </tbody>
+          )}
+          {grupos.map((g) => (
+            <tbody key={g.clave}>
+              {g.titulo !== null && (
+                <tr className="hover:!bg-transparent">
+                  <Td colSpan={7} className="bg-muted/40 py-2">
+                    <span className="font-semibold">{g.titulo}</span>
+                    <span className="ml-2 font-mono text-xs text-muted-foreground">
+                      {g.routers.length} {g.routers.length === 1 ? "router" : "routers"}
+                    </span>
+                  </Td>
+                </tr>
+              )}
+              {g.routers.map((r) => (
               <tr key={r.id}>
                 <Td>
                   <div className="whitespace-nowrap font-medium">{r.nombre}</div>
@@ -391,8 +449,9 @@ export default function Routers() {
                   </div>
                 </Td>
               </tr>
-            ))}
-          </tbody>
+              ))}
+            </tbody>
+          ))}
         </Table>
       </Card>
 

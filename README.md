@@ -68,6 +68,9 @@ En todas las tablas:
   desmarcado se señala en la tabla con «Sin Message-Authenticator».
 - Buscador por nombre, empresa o red; filtros por empresa, tipo de acceso y estado; y orden
   por cualquier columna.
+- **Agrupar** por empresa o por estado actual: cada grupo lleva un encabezado con su número
+  de routers, y el orden de las columnas se aplica dentro de cada grupo. La elección se
+  recuerda durante la sesión.
 
 ### Usuarios MikroTik
 
