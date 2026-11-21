@@ -26,6 +26,21 @@ mkdir -p "$REGISTRO"
 chown "$(stat -c %U "$RADDB/mods-config/files" 2>/dev/null || echo root):$GRUPO" "$REGISTRO"
 chmod 0770 "$REGISTRO"
 
+FIFO=/tmp/rc-salida-freeradius
+DESCARTES="$REGISTRO/descartes.log"
+[ -f "$DESCARTES" ] || install -m 0640 -g "$GRUPO" /dev/null "$DESCARTES"
+
+copiar_descartes() {
+    while IFS= read -r linea; do
+        printf '%s\n' "$linea"
+        case "$linea" in
+            *"Dropping packet without response"*"(from client rc-"*)
+                printf '%s\t%s\n' "$(date +%s)" "$linea" >> "$DESCARTES"
+                ;;
+        esac
+    done
+}
+
 # informar <estado> <versión> <huella clients> <huella authorize>
 informar() {
     printf '{"estado":"%s","version":"%s","sha_clients":"%s","sha_authorize":"%s","desde":"%s"}\n' \
@@ -57,7 +72,14 @@ while :; do
     SA="$(sha256sum "$RADDB/mods-config/files/authorize" | cut -d' ' -f1)"
 
     echo "arranque: cargando la versión ${V##*/}"
-    freeradius -f -l stdout &
+    # La salida de FreeRADIUS sigue yendo al registro del contenedor y, además,
+    # las peticiones que descarta sin responder viniendo de un router del panel
+    # (secreto que no coincide, falta de Message-Authenticator...) se copian a
+    # descartes.log para que la API las enseñe como aviso.
+    rm -f "$FIFO"
+    mkfifo "$FIFO"
+    copiar_descartes < "$FIFO" &
+    freeradius -f -l stdout > "$FIFO" 2>&1 &
     PID=$!
     # Solo se declara «en marcha» cuando el puerto 1812/udp ya está escuchando.
     # 0714 es 1812 en hexadecimal, que es como lo lista el núcleo.

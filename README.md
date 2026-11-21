@@ -99,6 +99,11 @@ En todas las tablas:
 - **Agrupar** por router, por empresa, por usuario o por resultado. El encabezado de cada
   bloque dice cuántos registros tiene en total y, si el bloque sigue en la página
   siguiente, cuántos se ven en esta.
+- **Peticiones descartadas**: si FreeRADIUS tira sin responder las peticiones de un router
+  dado de alta (porque el secreto del router no coincide con el del panel, o porque no
+  envía Message-Authenticator y se le exige), aparece un aviso aquí y en Inicio con el
+  router, la dirección, cuántas peticiones y qué hacer. Solo cuentan las de routers del
+  panel: lo que viene de direcciones no registradas lo para antes el firewall.
 - **Sondeos sin clave**: al abrir una conexión SSH, antes de pedir la contraseña, RouterOS
   manda a RADIUS una petición con la contraseña vacía. Se rechaza como siempre, pero se
   registra aparte como «Sondeo sin clave»: no sale en «Todos», no cuenta como rechazo en

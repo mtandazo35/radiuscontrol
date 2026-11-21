@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { Badge, Card, EstadoVacio, Table, Td, Th } from "@/components/ui";
 import { api } from "@/lib/api";
 import { cn, fecha, motivoLegible } from "@/lib/utils";
+import { AvisoDescartes } from "@/components/AvisoDescartes";
 import { useFiltro } from "../filtro";
 
 interface Tramo {
@@ -309,6 +310,7 @@ export default function Inicio() {
 
   return (
     <div className="space-y-4">
+      <AvisoDescartes />
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Indicador
           titulo="Autenticaciones (24 h)"

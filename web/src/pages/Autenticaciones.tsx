@@ -6,6 +6,7 @@ import { BotonVaciar } from "@/components/Vaciar";
 import { api, type Autenticacion, type PaginaAutenticaciones } from "@/lib/api";
 import { cn, fecha, motivoLegible } from "@/lib/utils";
 import { useApp } from "../contexto";
+import { AvisoDescartes } from "@/components/AvisoDescartes";
 import { useFiltro } from "../filtro";
 
 const filtros = [
@@ -174,6 +175,8 @@ export default function Autenticaciones() {
           <option value="resultado">Por resultado</option>
         </Select>
       </div>
+
+      <AvisoDescartes />
 
       {/* Visor de registros: fondo de consola, letra monoespaciada y los
           rechazos señalados en rojo para que salten a la vista. */}

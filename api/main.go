@@ -149,6 +149,7 @@ func main() {
 	}
 
 	go app.bucleRegistro(ctx)
+	go app.bucleDescartes(ctx)
 	go app.bucleSesiones(ctx)
 	go app.bucleLimpieza(ctx)
 	// Al arrancar se aplica lo que haya pendiente. Tras una actualización, el
@@ -353,6 +354,7 @@ func (a *App) rutas() http.Handler {
 	m.HandleFunc("POST /api/origenes", a.admin(a.guardarOrigen))
 	m.HandleFunc("DELETE /api/origenes/{id}", a.admin(a.borrarOrigen))
 	m.HandleFunc("GET /api/autenticaciones", a.privado(a.listarAutenticaciones))
+	m.HandleFunc("GET /api/descartes", a.privado(a.listarDescartes))
 
 	m.HandleFunc("GET /api/usuarios", a.privado(a.listarUsuarios))
 	m.HandleFunc("POST /api/usuarios", cambia(a.crearUsuario))

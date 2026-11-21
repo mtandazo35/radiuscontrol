@@ -336,6 +336,22 @@ comprobar "Registro: una agrupación que no está en la lista se ignora, 200" \
 api GET "/api/auditoria?orden=operador&dir=asc&tamano=50"
 comprobar "Actividad: ordenar por operador devuelve los operadores en orden, 200" \
     "$(codigo_es 200 && printf '%s' "$CUERPO" | jq -e '[.eventos[].operador | ascii_downcase] as $o | $o == ($o | sort)' >/dev/null; echo $?)"
+# ---------------------------------------------------------------- peticiones descartadas
+# Un router del panel con el secreto equivocado: FreeRADIUS descarta sin
+# responder y el panel lo enseña como aviso, con su router y su motivo.
+poner_secreto /tmp/secreto-malo "secreto-que-no-es-el-del-router"
+S="$(radius 127.0.0.1 /tmp/secreto-malo "$PAP_OK")"
+comprobar "Descartes: con el secreto equivocado FreeRADIUS no responde" \
+    "$(printf '%s' "$S" | grep -q 'Received Access-'; [ $? -ne 0 ]; echo $?)" "$(printf '%s' "$S" | tail -2)"
+sleep 6
+api GET "/api/descartes?router=$RID"
+comprobar "Descartes: el panel avisa del secreto que no coincide, con su router y la dirección" \
+    "$(codigo_es 200 && printf '%s' "$CUERPO" | jq -e --argjson r "$RID" 'any(.descartes[]; .router_id == $r and .motivo == "secreto" and .ip == "127.0.0.1" and .total >= 1 and .router == "prueba-automatica")' >/dev/null; echo $?)" \
+    "$(printf '%s' "$CUERPO" | jq -c '.descartes[:2]')"
+api GET "/api/descartes?router=999999999"
+comprobar "Descartes: filtrado por un router sin descartes no devuelve nada" \
+    "$(codigo_es 200 && printf '%s' "$CUERPO" | jq -e '(.descartes | length) == 0' >/dev/null; echo $?)"
+
 # ---------------------------------------------------------------- sondeo SSH
 # Todo cliente SSH abre con «none» y RouterOS lo acompaña de un MS-CHAPv2
 # calculado con la contraseña vacía, antes del login de verdad. Se rechaza y
@@ -1327,7 +1343,7 @@ aplicar
 comprobar "Limpieza: datos de prueba borrados y configuración aplicada" "$?"
 docker exec "$RADIUS" rm -f /tmp/secreto /tmp/secreto-malo /tmp/secreto-raro /tmp/secreto-b
 api DELETE /api/sesion
-docker compose exec -T postgres psql -q -U radiuscontrol -d radiuscontrol -c     "DELETE FROM accesos_servidor WHERE red IN ($REDES_ACC_SQL); DELETE FROM auditoria WHERE accion LIKE 'servidor.acceso%' AND (objeto LIKE '% $RED_ACC_A' OR objeto LIKE '% $RED_ACC_B' OR objeto LIKE '% $RED_ACC_SSH'); DELETE FROM autenticaciones WHERE router_nombre LIKE '$ROUTER_PRUEBA%' OR usuario LIKE '$USUARIO_PRUEBA%' OR usuario IN ('no-existe', 'DEFAULT', '$MARCA_ANTIGUA', '$MARCA_RECIENTE'); DELETE FROM purgas WHERE operador = '$ADMIN_PRUEBA'; DELETE FROM operadores WHERE usuario = '$ADMIN_PRUEBA'; DELETE FROM intentos_ip WHERE ip IN ('$IP_PRUEBA', '$IP_ATACANTE', '$IP_PUBLICA') OR ip LIKE '192.0.2.2%'; DELETE FROM auditoria WHERE ip LIKE '192.0.2.2%' OR operador IN ('operador-bloqueo-automatica', 'operador-sesiones-automatica') OR objeto IN ('operador-bloqueo-automatica', 'operador-sesiones-automatica', 'todas las demás'); DELETE FROM auditoria WHERE operador IN ('$OPERADOR_PRUEBA', '$ADMIN_PRUEBA', 'prueba-direccion-fingida', 'usuario-que-no-existe', '$MARCA_ANTIGUA', '$MARCA_RECIENTE') OR ip IN ('$IP_PRUEBA', '$IP_ATACANTE') OR objeto IN ('$IP_ATACANTE', '$IP_PRUEBA') OR objeto = '$ADMIN_PRUEBA' OR objeto IN ('$OPERADOR_PRUEBA', 'Empresa de prueba') OR objeto LIKE '$ROUTER_PRUEBA%' OR objeto LIKE '$USUARIO_PRUEBA%' OR (accion = 'accesos.cambio_masivo' AND operador = '$ADMIN_PRUEBA'); DELETE FROM empresas e WHERE e.nombre IN ('Empresa de prueba', '$EMPRESA_ACCESOS') AND NOT EXISTS (SELECT 1 FROM routers r WHERE r.empresa_id = e.id)" >/dev/null 2>&1
+docker compose exec -T postgres psql -q -U radiuscontrol -d radiuscontrol -c     "DELETE FROM descartes WHERE ip LIKE '127.%'; DELETE FROM accesos_servidor WHERE red IN ($REDES_ACC_SQL); DELETE FROM auditoria WHERE accion LIKE 'servidor.acceso%' AND (objeto LIKE '% $RED_ACC_A' OR objeto LIKE '% $RED_ACC_B' OR objeto LIKE '% $RED_ACC_SSH'); DELETE FROM autenticaciones WHERE router_nombre LIKE '$ROUTER_PRUEBA%' OR usuario LIKE '$USUARIO_PRUEBA%' OR usuario IN ('no-existe', 'DEFAULT', '$MARCA_ANTIGUA', '$MARCA_RECIENTE'); DELETE FROM purgas WHERE operador = '$ADMIN_PRUEBA'; DELETE FROM operadores WHERE usuario = '$ADMIN_PRUEBA'; DELETE FROM intentos_ip WHERE ip IN ('$IP_PRUEBA', '$IP_ATACANTE', '$IP_PUBLICA') OR ip LIKE '192.0.2.2%'; DELETE FROM auditoria WHERE ip LIKE '192.0.2.2%' OR operador IN ('operador-bloqueo-automatica', 'operador-sesiones-automatica') OR objeto IN ('operador-bloqueo-automatica', 'operador-sesiones-automatica', 'todas las demás'); DELETE FROM auditoria WHERE operador IN ('$OPERADOR_PRUEBA', '$ADMIN_PRUEBA', 'prueba-direccion-fingida', 'usuario-que-no-existe', '$MARCA_ANTIGUA', '$MARCA_RECIENTE') OR ip IN ('$IP_PRUEBA', '$IP_ATACANTE') OR objeto IN ('$IP_ATACANTE', '$IP_PRUEBA') OR objeto = '$ADMIN_PRUEBA' OR objeto IN ('$OPERADOR_PRUEBA', 'Empresa de prueba') OR objeto LIKE '$ROUTER_PRUEBA%' OR objeto LIKE '$USUARIO_PRUEBA%' OR (accion = 'accesos.cambio_masivo' AND operador = '$ADMIN_PRUEBA'); DELETE FROM empresas e WHERE e.nombre IN ('Empresa de prueba', '$EMPRESA_ACCESOS') AND NOT EXISTS (SELECT 1 FROM routers r WHERE r.empresa_id = e.id)" >/dev/null 2>&1
 
 anotar ""
 anotar "Evidencia: $EVIDENCIA"

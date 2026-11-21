@@ -143,6 +143,11 @@ func (a *App) borrarAntiguos(ctx context.Context, diasAutenticaciones, diasActiv
 		return err
 	}
 	p.Autenticaciones += ct.RowsAffected()
+	// Las peticiones descartadas se conservan lo mismo que las autenticaciones.
+	if _, err := a.db.Exec(ctx, `DELETE FROM descartes WHERE fecha < now() - make_interval(days => $1)`,
+		diasAutenticaciones); err != nil {
+		return err
+	}
 	ct, err = a.db.Exec(ctx, `DELETE FROM auditoria WHERE fecha < now() - make_interval(days => $1)`,
 		diasActividad)
 	if err != nil {
@@ -259,6 +264,9 @@ func (a *App) vaciarRegistros(w http.ResponseWriter, r *http.Request, op *Operad
 			return err
 		}
 		p.Autenticaciones = ct.RowsAffected()
+		if _, err := a.db.Exec(ctx, `DELETE FROM descartes WHERE fecha < now() - make_interval(days => $1)`, in.Dias); err != nil {
+			return err
+		}
 	}
 	if in.Registro != "autenticaciones" {
 		ct, err := a.db.Exec(ctx, `DELETE FROM auditoria WHERE fecha < now() - make_interval(days => $1)`, in.Dias)
