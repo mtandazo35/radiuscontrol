@@ -68,10 +68,11 @@ En todas las tablas:
 ### Usuarios MikroTik
 
 - Las personas que entran a los routers. Cada una tiene su grupo general.
-- Alta, suspensión, baja y restablecimiento de contraseña.
-- La contraseña la escribes tú o la genera el sistema. Al editar un usuario, un
-  administrador puede ver la contraseña en uso y escribir una nueva. Cada consulta queda
-  en el registro de actividad.
+- Alta, edición, suspensión y baja.
+- La contraseña la escribes tú o la genera el sistema, tanto al crear el usuario como al
+  restablecerla. Al guardar se muestra para copiarla.
+- Al editar un usuario, un administrador puede ver la contraseña en uso y escribir una
+  nueva que la sustituya. Cada consulta queda en el registro de actividad.
 - Buscador por usuario o nombre, filtros por grupo y estado, y orden por cualquier columna.
 
 ### Autenticaciones
@@ -102,6 +103,8 @@ En todas las tablas:
   El motivo real queda en el registro de actividad.
 - Con la sesión abierta, repetir mal la contraseña cinco veces (al cambiarla o al quitar la
   verificación en dos pasos) bloquea esas operaciones 15 minutos.
+- La contraseña de un usuario MikroTik y el secreto de un router solo los puede ver un
+  administrador, y cada consulta queda anotada con quién la hizo y desde dónde.
 - Sesiones abiertas a la vista, con cierre individual o de todas las demás. Una sesión se
   cierra sola tras 30 minutos sin actividad.
 - Registro de actividad: accesos, intentos fallidos y cada cambio, con quién y desde dónde.
@@ -238,7 +241,7 @@ agente las repone o las quita en un minuto como mucho.
 
 ## Pruebas
 
-`despliegue/probar.sh` ejecuta más de 220 pruebas de extremo a extremo en el propio
+`despliegue/probar.sh` ejecuta más de 230 pruebas de extremo a extremo en el propio
 servidor: usa la API como lo haría el panel y verifica el resultado con logins RADIUS
 reales contra FreeRADIUS y con las reglas reales de UFW. Crea sus propios datos, con su
 propia cuenta, y los borra al terminar. La evidencia queda en `despliegue/evidencias/`.
@@ -252,6 +255,10 @@ propia cuenta, y los borra al terminar. La evidencia queda en `despliegue/eviden
   desactivado no se han probado todavía en una máquina limpia.
 - Un SSH abierto con un perfil de aplicación de UFW (`ufw allow OpenSSH`) no se reconoce
   como regla de SSH en Accesos al servidor.
+- Mover columnas arrastrando no funciona en pantallas táctiles; ordenar pulsando el
+  encabezado sí.
+- La contraseña de un usuario MikroTik creado antes de la versión que permite consultarla
+  no se puede recuperar: hay que ponerle una nueva para poder verla después.
 - El panel solo registra autenticaciones. No lleva contabilidad RADIUS (sesiones, tráfico
   ni tiempo de conexión) y no sondea los routers: «activo» significa dado de alta y sin
   suspender, no que el router esté encendido.
