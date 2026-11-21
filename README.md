@@ -23,6 +23,19 @@ funcionando con la última configuración cargada.
 
 ## Qué se puede hacer desde el panel
 
+El panel tiene tema oscuro por omisión y tema claro, y se puede usar desde el teléfono. En
+la barra superior hay un filtro por router, que afecta a Inicio, Routers y
+Autenticaciones, y un botón para volver a pedir los datos.
+
+### Inicio
+
+- Autenticaciones y rechazos de las últimas 24 horas, routers activos y usuarios activos.
+- Gráfico de logins aceptados y rechazados de la última hora, de las últimas 12 o de las
+  últimas 24: un pico de rechazos delata a alguien o algo reintentando.
+- Los últimos intentos, quién entra más, a quién se rechaza más, desde qué dirección y por
+  qué motivo.
+- Una tabla por router con sus redes, sus logins del día y el último login aceptado.
+
 ### Routers
 
 - Alta, edición, suspensión y baja. Cada router se identifica por la dirección de origen
@@ -35,17 +48,24 @@ funcionando con la última configuración cargada.
     des en ese router (`full`, `write`, `read` u otro grupo).
 - **Cambios masivos**: dar o quitar acceso a varios usuarios, o cambiar el modo, en todos
   los routers, en los de una empresa o en una selección.
+- Buscador por nombre, empresa o red; filtros por empresa, tipo de acceso y estado; y orden
+  por cualquier columna.
 
 ### Usuarios MikroTik
 
 - Las personas que entran a los routers. Cada una tiene su grupo general.
 - Alta, suspensión, baja y restablecimiento de contraseña.
+- La contraseña la escribes tú o la genera el sistema. Al guardar se muestra una sola vez
+  para copiarla; después no se puede consultar, porque solo se guarda su hash.
+- Buscador por usuario o nombre, filtros por grupo y estado, y orden por cualquier columna.
 
 ### Autenticaciones
 
 - Cada intento de login que FreeRADIUS aceptó o rechazó: fecha, usuario, router, empresa,
   dirección desde la que entró, método y grupo o motivo del rechazo.
-- Buscador, filtro por resultado y paginación.
+- Buscador, filtro rápido por resultado (todos, aceptados, rechazados) y paginación. Los
+  rechazos van marcados en rojo con su motivo.
+- Las direcciones se copian con un clic.
 
 ### Configuración
 
@@ -62,7 +82,11 @@ funcionando con la última configuración cargada.
 - Operadores del panel con dos roles: administrador y solo lectura.
 - Verificación en dos pasos (TOTP) con código QR.
 - Bloqueo del inicio de sesión tras 4 intentos fallidos, por dirección IP y por cuenta,
-  con desbloqueo desde el panel.
+  con desbloqueo desde el panel. A quien no logra entrar se le responde siempre lo mismo
+  («Usuario o contraseña incorrectos»): no se le dice si hay un bloqueo ni cuánto falta.
+  El motivo real queda en el registro de actividad.
+- Con la sesión abierta, repetir mal la contraseña cinco veces (al cambiarla o al quitar la
+  verificación en dos pasos) bloquea esas operaciones 15 minutos.
 - Sesiones abiertas a la vista, con cierre individual o de todas las demás. Una sesión se
   cierra sola tras 30 minutos sin actividad.
 - Registro de actividad: accesos, intentos fallidos y cada cambio, con quién y desde dónde.
@@ -79,6 +103,10 @@ funcionando con la última configuración cargada.
 La clave de cifrado vive fuera de la base de datos, en `despliegue/secrets/`. Un volcado
 de la base sin esa clave no contiene nada utilizable. Los secretos RADIUS no se pueden
 guardar como hash porque el protocolo necesita su valor original.
+
+En el repositorio no hay ninguna contraseña ni clave: los secretos se generan al instalar,
+en `despliegue/secrets/`, que queda fuera de git. El archivo `despliegue/.env` solo lleva
+la dirección del panel y la del servidor; hay un ejemplo en `despliegue/.env.example`.
 
 ## ⚡ Instalación rápida (one-liner)
 
@@ -157,7 +185,8 @@ forma de entrar.
 | Agente de firewall | Mantiene las reglas de UFW que gestiona el panel | Servicio del servidor |
 | Agente de actualización | Busca e instala versiones nuevas a petición | Servicio del servidor |
 
-El certificado del panel es autofirmado: el navegador avisa la primera vez.
+El certificado del panel es autofirmado: el navegador avisa la primera vez. El panel solo
+atiende por HTTPS; el puerto 80 no escucha.
 
 ## Actualizaciones
 
@@ -190,7 +219,7 @@ agente las repone o las quita en un minuto como mucho.
 
 ## Pruebas
 
-`despliegue/probar.sh` ejecuta más de 200 pruebas de extremo a extremo en el propio
+`despliegue/probar.sh` ejecuta más de 220 pruebas de extremo a extremo en el propio
 servidor: usa la API como lo haría el panel y verifica el resultado con logins RADIUS
 reales contra FreeRADIUS y con las reglas reales de UFW. Crea sus propios datos, con su
 propia cuenta, y los borra al terminar. La evidencia queda en `despliegue/evidencias/`.
@@ -204,6 +233,14 @@ propia cuenta, y los borra al terminar. La evidencia queda en `despliegue/eviden
   desactivado no se han probado todavía en una máquina limpia.
 - Un SSH abierto con un perfil de aplicación de UFW (`ufw allow OpenSSH`) no se reconoce
   como regla de SSH en Accesos al servidor.
+- El panel solo registra autenticaciones. No lleva contabilidad RADIUS (sesiones, tráfico
+  ni tiempo de conexión) y no sondea los routers: «activo» significa dado de alta y sin
+  suspender, no que el router esté encendido.
+- La API se conecta a PostgreSQL con el usuario administrador de la base. La base no
+  publica ningún puerto; pasar a un usuario con menos privilegios está pendiente.
+- Las dependencias de la web tienen avisos conocidos en vite y react-router que no afectan
+  al panel instalado (servidor de desarrollo y renderizado en servidor, que no se usan);
+  corregirlos exige un salto de versión mayor, pendiente.
 
 ## Estructura del repositorio
 
@@ -214,6 +251,7 @@ propia cuenta, y los borra al terminar. La evidencia queda en `despliegue/eviden
 | `despliegue/` | Docker Compose, instalador, pruebas y los dos agentes del servidor |
 | `docs/` | [Especificación original](docs/especificacion.md), con el orden de entregas |
 | `install.sh` | Instalación rápida |
+| `AGENTS.md` | Reglas de trabajo para los asistentes de programación que tocan el código |
 
-Tecnologías: FreeRADIUS 3.2.x, Go, React + TypeScript + Tailwind, PostgreSQL y Docker
-Compose.
+Tecnologías: FreeRADIUS 3.2.x, Go 1.26, React + TypeScript + Tailwind, PostgreSQL 16 y
+Docker Compose.
