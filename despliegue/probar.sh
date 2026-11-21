@@ -324,24 +324,30 @@ comprobar "Registro: un orden que no está en la lista se ignora y responde como
 api GET "/api/auditoria?orden=operador&dir=asc&tamano=50"
 comprobar "Actividad: ordenar por operador devuelve los operadores en orden, 200" \
     "$(codigo_es 200 && printf '%s' "$CUERPO" | jq -e '[.eventos[].operador | ascii_downcase] as $o | $o == ($o | sort)' >/dev/null; echo $?)"
-api POST /api/origenes '{"red":"127.0.0.0/8","nombre":"Origen de prueba, red"}'
+# Un login que declara desde qué dirección entra la persona (Calling-Station-Id).
+radius 127.0.0.1 /tmp/secreto "$PAP_OK, Calling-Station-Id = \"192.0.2.77\"" >/dev/null
+sleep 6
+de_origen() { printf '%s' "$CUERPO" | jq -e --arg n "$1" '[.autenticaciones[] | select(.origen == "192.0.2.77")] | length > 0 and all(.origen_nombre == $n)' >/dev/null; }
+api GET "/api/autenticaciones?buscar=$USUARIO_PRUEBA&tamano=100"
+comprobar "Orígenes: una dirección sin descripción llega con el nombre vacío" "$(de_origen ""; echo $?)" \
+    "$(printf '%s' "$CUERPO" | jq -c '[.autenticaciones[] | {origen, origen_nombre}] | unique')"
+api POST /api/origenes '{"red":"192.0.2.0/24","nombre":"Origen de prueba, red"}'
 comprobar "Orígenes: un administrador da nombre a una red, 200" "$(codigo_es 200; echo $?)"
 ORIGEN_RED_ID="$(printf '%s' "$CUERPO" | jq -r '.id')"
-api POST /api/origenes '{"red":"127.0.0.1","nombre":"Origen de prueba, equipo"}'
+api GET "/api/autenticaciones?buscar=$USUARIO_PRUEBA&tamano=100"
+comprobar "Orígenes: la dirección toma la descripción de la red que la contiene" "$(de_origen "Origen de prueba, red"; echo $?)"
+api POST /api/origenes '{"red":"192.0.2.77","nombre":"Origen de prueba, equipo"}'
 ORIGEN_IP_ID="$(printf '%s' "$CUERPO" | jq -r '.id')"
 api GET "/api/autenticaciones?buscar=$USUARIO_PRUEBA&tamano=100"
-comprobar "Orígenes: las autenticaciones traen la descripción de la red más pequeña que contiene la dirección" \
-    "$(printf '%s' "$CUERPO" | jq -e '[.autenticaciones[] | select(.origen == "127.0.0.1")] | length > 0 and all(.origen_nombre == "Origen de prueba, equipo")' >/dev/null; echo $?)" \
-    "$(printf '%s' "$CUERPO" | jq -c '[.autenticaciones[] | {origen, origen_nombre}] | unique')"
-api POST /api/origenes '{"red":"127.0.0.1","nombre":"Origen de prueba, renombrado"}'
+comprobar "Orígenes: si cae en varias, vale la descripción de la red más pequeña" "$(de_origen "Origen de prueba, equipo"; echo $?)"
+api POST /api/origenes '{"red":"192.0.2.77","nombre":"Origen de prueba, renombrado"}'
 comprobar "Orígenes: guardar otra vez la misma dirección le cambia el nombre en vez de duplicarla" \
     "$(codigo_es 200 && [ "$(printf '%s' "$CUERPO" | jq -r '.id')" = "$ORIGEN_IP_ID" ]; echo $?)"
 api POST /api/origenes '{"red":"no es una ip","nombre":"x"}'
 comprobar "Orígenes: una dirección que no lo es se rechaza, 400" "$(codigo_es 400; echo $?)"
 api DELETE "/api/origenes/$ORIGEN_IP_ID"
 api GET "/api/autenticaciones?buscar=$USUARIO_PRUEBA&tamano=100"
-comprobar "Orígenes: al quitar el nombre del equipo vale el de la red" \
-    "$(printf '%s' "$CUERPO" | jq -e '[.autenticaciones[] | select(.origen == "127.0.0.1")] | length > 0 and all(.origen_nombre == "Origen de prueba, red")' >/dev/null; echo $?)"
+comprobar "Orígenes: al quitar el nombre del equipo vuelve a valer el de la red" "$(de_origen "Origen de prueba, red"; echo $?)"
 api DELETE "/api/origenes/$ORIGEN_RED_ID"
 comprobar "Orígenes: quitar un nombre, 200" "$(codigo_es 200; echo $?)"
 api GET /api/origenes
