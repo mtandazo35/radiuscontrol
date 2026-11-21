@@ -43,8 +43,9 @@ rc_registrar_aceptado {
 
 rc_registrar_rechazado {
 	rc_metodo
-	#  Un PAP con la contraseña vacía es el mismo sondeo que el de MS-CHAP.
-	if (&request:User-Password && (&request:User-Password == "")) {
+	#  Sin ninguna credencial, o con la clave PAP vacía, es el mismo sondeo que
+	#  el de MS-CHAP con la contraseña vacía.
+	if ((&control:Tmp-String-0 == "otro") || (&request:User-Password && (&request:User-Password == ""))) {
 		update control {
 			&Tmp-String-2 := "sondeo"
 		}

@@ -26,15 +26,28 @@ sed -i '0,/^[[:space:]]*Post-Auth-Type REJECT {/s//\tPost-Auth-Type REJECT {\n\t
 # ya trae su identificador y su grupo general.
 sed -i '0,/^\tfiles$/s//\tfiles\n\trc_accesos/' "$SITIO"
 
-# MS-CHAP: la rama de rechazo distingue el sondeo con la contraseña vacía.
+# MS-CHAP: la rama de rechazo distingue el sondeo con la contraseña vacía. El
+# módulo mschap pone «Auth-Type = mschap», que atiende la línea suelta «mschap»
+# de authenticate; «Auth-Type MS-CHAP» es el nombre antiguo. Se cambian los dos.
 awk -v bloque="$ORIGEN/rc_mschap.bloque" '
-/^\tAuth-Type MS-CHAP \{$/ && !hecho { while ((getline l < bloque) > 0) print l; salta = 1; hecho = 1; next }
+function poner(nombre,    l, n) {
+    n = 0
+    while ((getline l < bloque) > 0) {
+        if (n++ == 0) sub(/MS-CHAP/, nombre, l)
+        print l
+    }
+    close(bloque)
+}
+/^authenticate \{$/ { dentro = 1 }
+dentro && /^\}$/ { dentro = 0 }
+dentro && /^\tAuth-Type MS-CHAP \{$/ { poner("MS-CHAP"); salta = 1; next }
+dentro && /^\tmschap$/ { poner("mschap"); next }
 salta { if ($0 ~ /^\t\}$/) salta = 0; next }
 { print }' "$SITIO" > "$SITIO.rc"
 cat "$SITIO.rc" > "$SITIO"
 rm -f "$SITIO.rc"
 
-if [ "$(grep -c 'rc_sondeo_mschap' "$SITIO")" != 1 ]; then
+if [ "$(grep -c 'rc_sondeo_mschap' "$SITIO")" != 2 ]; then
     echo "preparar: no se pudo insertar la detección del sondeo MS-CHAP en $SITIO" >&2
     exit 1
 fi
