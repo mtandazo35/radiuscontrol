@@ -1,8 +1,7 @@
 import * as React from "react";
 import { AccesoServidor } from "@/components/AccesoServidor";
-import { useActualizacion, versionCorta } from "@/components/Actualizacion";
 import { Limpieza } from "@/components/Limpieza";
-import { Badge, Button, Card } from "@/components/ui";
+import { Badge, Card } from "@/components/ui";
 import { fecha, huellaCorta } from "@/lib/utils";
 import { Origenes } from "@/components/Origenes";
 import { useApp } from "../contexto";
