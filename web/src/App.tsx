@@ -1,4 +1,4 @@
-import { LayoutDashboard, ListChecks, Lock, Moon, RefreshCw, Router as IconoRouter, Settings2, ShieldCheck, Sun, Users } from "lucide-react";
+import { Download, LayoutDashboard, ListChecks, Lock, Moon, RefreshCw, Router as IconoRouter, Settings2, ShieldCheck, Sun, Users } from "lucide-react";
 import * as React from "react";
 import { Navigate, NavLink, Route, Routes, useLocation } from "react-router-dom";
 import { ProveedorActualizacion, useActualizacion, versionCorta } from "@/components/Actualizacion";
@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { useApp } from "./contexto";
 import { ProveedorFiltro, useFiltro } from "./filtro";
 import Autenticaciones from "./pages/Autenticaciones";
+import Actualizacion from "./pages/Actualizacion";
 import Configuracion from "./pages/Configuracion";
 import Inicio from "./pages/Inicio";
 import Login from "./pages/Login";
@@ -38,6 +39,7 @@ const grupos = [
     secciones: [
       { ruta: "/seguridad", texto: "Seguridad", icono: Lock },
       { ruta: "/configuracion", texto: "Configuración", icono: Settings2 },
+      { ruta: "/actualizacion", texto: "Actualización", icono: Download, soloAdmin: true },
     ],
   },
 ];
@@ -189,6 +191,9 @@ function SelectorRouter() {
 function Marco({ children }: { children: React.ReactNode }) {
   const [oscuro, setOscuro] = React.useState(document.documentElement.classList.contains("dark"));
   const { marca, sincronizando, sincronizar } = useFiltro();
+  const { operador } = useApp();
+  const esAdmin = operador?.rol === "administrador";
+  const act = useActualizacion();
   const { pathname } = useLocation();
   const titulo = grupos.flatMap((g) => g.secciones).find((s) => pathname.startsWith(s.ruta))?.texto ?? "RadiusControl";
   const cambiarTema = () => {
@@ -213,7 +218,7 @@ function Marco({ children }: { children: React.ReactNode }) {
           {grupos.map((g) => (
             <div key={g.titulo} className="flex gap-1 md:mb-4 md:flex-col md:gap-0.5">
               <p className="hidden px-2 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground md:block">{g.titulo}</p>
-              {g.secciones.map(({ ruta, texto, icono: Icono }) => (
+              {g.secciones.filter((x) => !("soloAdmin" in x) || esAdmin).map(({ ruta, texto, icono: Icono }) => (
                 <NavLink
                   key={ruta}
                   to={ruta}
@@ -226,6 +231,11 @@ function Marco({ children }: { children: React.ReactNode }) {
                 >
                   <Icono className="size-4 shrink-0" aria-hidden="true" />
                   {texto}
+                  {ruta === "/actualizacion" && act.pendientes > 0 && (
+                    <span className="ml-auto rounded-full bg-warning/15 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-warning" title="Cambios nuevos por instalar">
+                      {act.pendientes}
+                    </span>
+                  )}
                 </NavLink>
               ))}
             </div>
@@ -280,6 +290,7 @@ export default function App() {
           <Route path="/usuarios" element={<Usuarios />} />
           <Route path="/autenticaciones" element={<Autenticaciones />} />
           <Route path="/configuracion" element={<Configuracion />} />
+          <Route path="/actualizacion" element={<Actualizacion />} />
           <Route path="/seguridad" element={<Seguridad />} />
           <Route path="*" element={<Navigate to="/inicio" replace />} />
         </Routes>
