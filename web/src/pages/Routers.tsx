@@ -1,4 +1,4 @@
-import { Plus, Users } from "lucide-react";
+import { Eye, EyeOff, Plus, Users } from "lucide-react";
 import * as React from "react";
 import { accesosDe, BloqueAccesos, CambiosMasivos, permisosDe, type Permisos } from "@/components/Accesos";
 import { Badge, Button, Card, Copiable, Dialog, DialogContent, DialogFooter, EstadoVacio, Input, Label, Select, Table, Td, Textarea, Th, ThOrden, comparar, useOrden } from "@/components/ui";
@@ -57,6 +57,26 @@ export default function Routers() {
   const [empresas, setEmpresas] = React.useState<Empresa[]>([]);
   const [usuarios, setUsuarios] = React.useState<Usuario[] | null>(null);
   const [masivo, setMasivo] = React.useState(false);
+  // Secreto en uso del router que se está editando: solo se pide al pulsar «Ver».
+  const [secretoActual, setSecretoActual] = React.useState<string | null>(null);
+  const [pidiendoSecreto, setPidiendoSecreto] = React.useState(false);
+  const formId = form?.id ?? null;
+  React.useEffect(() => {
+    setSecretoActual(null);
+  }, [formId]);
+
+  const verSecreto = async () => {
+    if (formId === null) return;
+    setPidiendoSecreto(true);
+    try {
+      const r = await api<{ secreto: string }>("GET", `/routers/${formId}/secreto`);
+      setSecretoActual(r.secreto);
+    } catch (e) {
+      avisarError(e);
+    } finally {
+      setPidiendoSecreto(false);
+    }
+  };
 
   const cargar = React.useCallback(async () => {
     try {
@@ -155,9 +175,25 @@ export default function Routers() {
         form.id === null
           ? await api<RespuestaRouter>("POST", "/routers", cuerpo)
           : await api<RespuestaRouter>("PUT", `/routers/${form.id}`, cuerpo);
+      // Al editar, un secreto escrito sustituye al que había.
+      const cambiado = form.id !== null && form.secreto !== "";
+      let lineas = "";
+      if (cambiado) {
+        await api<RespuestaRouter>("POST", `/routers/${form.id}/secreto`, { secreto: form.secreto });
+        lineas = (await api<{ script_rsc: string }>("GET", `/routers/${form.id}/secreto`)).script_rsc;
+      }
       setForm(null);
       await tras();
-      mostrarSecreto(r, `Router «${r.router.nombre}» creado`);
+      if (cambiado) {
+        avisar({
+          titulo: `Secreto de «${r.router.nombre}» cambiado`,
+          mensaje:
+            "El secreto anterior deja de servir en unos segundos. Pega estas líneas en el terminal del router para que use el nuevo (si ya tenía una entrada de RadiusControl en /radius, cambia ahí el secreto en vez de añadir otra).",
+          copiable: lineas,
+        });
+      } else {
+        mostrarSecreto(r, `Router «${r.router.nombre}» creado`);
+      }
     } catch (err) {
       avisarError(err);
     } finally {
@@ -395,18 +431,60 @@ export default function Routers() {
                 />
                 <p className="text-xs text-muted-foreground">Una por línea, IPv4 o IPv6. No pueden coincidir con las de otro router.</p>
               </div>
-              {form.id === null && (
+              {form.id === null ? (
                 <div className="space-y-2">
                   <Label htmlFor="secreto">Secreto RADIUS</Label>
                   <Input
                     id="secreto"
-                    type="password"
-                    autoComplete="new-password"
+                    className="font-mono"
+                    autoComplete="off"
+                    spellCheck={false}
                     placeholder="Vacío: se genera uno aleatorio"
                     value={form.secreto}
                     onChange={(e) => setForm({ ...form, secreto: e.target.value })}
                   />
                   <p className="text-xs text-muted-foreground">Escríbelo solo si el router ya tiene uno que quieras conservar.</p>
+                </div>
+              ) : (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Secreto RADIUS en uso</Label>
+                    <div className="flex h-9 items-center justify-between gap-2 rounded-md border border-input bg-muted/40 px-3">
+                      {secretoActual === null ? (
+                        <span className="font-mono text-sm tracking-widest text-muted-foreground" aria-hidden="true">
+                          ••••••••••••
+                        </span>
+                      ) : (
+                        <Copiable texto={secretoActual} className="min-w-0 text-sm" />
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => (secretoActual === null ? void verSecreto() : setSecretoActual(null))}
+                        disabled={pidiendoSecreto}
+                        aria-label={secretoActual === null ? "Ver el secreto en uso" : "Ocultar el secreto"}
+                        title={secretoActual === null ? "Ver el secreto en uso" : "Ocultar el secreto"}
+                        className="-mr-2 flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                      >
+                        {secretoActual === null ? <Eye className="size-4" aria-hidden="true" /> : <EyeOff className="size-4" aria-hidden="true" />}
+                      </button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Verlo queda anotado en el registro de actividad.</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="secreto">Secreto nuevo</Label>
+                    <Input
+                      id="secreto"
+                      className="font-mono"
+                      autoComplete="off"
+                      spellCheck={false}
+                      placeholder="Vacío: se conserva el actual"
+                      value={form.secreto}
+                      onChange={(e) => setForm({ ...form, secreto: e.target.value })}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Si escribes uno, sustituye al actual al guardar y el router debe usar el nuevo.
+                    </p>
+                  </div>
                 </div>
               )}
               <label className="flex items-start gap-2 text-sm">

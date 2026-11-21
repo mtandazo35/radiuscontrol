@@ -442,6 +442,33 @@ func (a *App) borrarRouter(w http.ResponseWriter, r *http.Request, op *Operador)
 	return nil
 }
 
+// verSecreto devuelve el secreto RADIUS de un router a un administrador. El
+// secreto se guarda cifrado y el protocolo necesita su valor original, así que
+// se puede recuperar; cada consulta queda en el registro de actividad.
+func (a *App) verSecreto(w http.ResponseWriter, r *http.Request, op *Operador) error {
+	id, err := idRuta(r)
+	if err != nil {
+		return err
+	}
+	ctx := r.Context()
+	var nombre string
+	var cifrado []byte
+	err = a.db.QueryRow(ctx, `SELECT nombre, secreto_cifrado FROM routers WHERE id = $1`, id).Scan(&nombre, &cifrado)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return noEncontrado()
+	}
+	if err != nil {
+		return err
+	}
+	claro, err := a.cifra.Descifrar(cifrado, dominioSecreto)
+	if err != nil {
+		return err
+	}
+	a.auditar(ctx, op.Usuario, ipCliente(r), "router.secreto_visto", nombre, nil)
+	escribirJSON(w, http.StatusOK, map[string]any{"secreto": string(claro), "script_rsc": a.scriptRouter(string(claro))})
+	return nil
+}
+
 func (a *App) rotarSecreto(w http.ResponseWriter, r *http.Request, op *Operador) error {
 	id, err := idRuta(r)
 	if err != nil {

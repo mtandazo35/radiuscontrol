@@ -43,6 +43,7 @@ const nombreAccion: Record<string, string> = {
   "router.editado": "Router editado",
   "router.eliminado": "Router eliminado",
   "router.secreto_rotado": "Secreto de router rotado",
+  "router.secreto_visto": "Secreto de router consultado",
   "usuario.creado": "Usuario MikroTik creado",
   "usuario.editado": "Usuario MikroTik editado",
   "usuario.eliminado": "Usuario MikroTik eliminado",

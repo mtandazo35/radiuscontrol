@@ -180,6 +180,14 @@ OCULTAR+=("$SECRETO")
 api GET /api/routers
 comprobar "Router: el listado no devuelve el secreto" \
     "$(printf '%s' "$CUERPO" | grep -q -e "$SECRETO" -e secreto_cifrado; [ $? -ne 0 ]; echo $?)"
+api GET "/api/routers/$ROUTER_ID/secreto"
+comprobar "Router: un administrador puede consultar el secreto en uso y sus líneas para el router, 200" \
+    "$(codigo_es 200 && printf '%s' "$CUERPO" | jq -e --arg s "$SECRETO" '.secreto == $s and (.script_rsc | contains($s))' >/dev/null; echo $?)"
+api GET "/api/auditoria?buscar=router.secreto_visto&tamano=5"
+comprobar "Router: consultar el secreto queda en el registro de actividad" \
+    "$(printf '%s' "$CUERPO" | jq -e --arg n "$ROUTER_PRUEBA" 'any(.eventos[]; .accion == "router.secreto_visto" and .objeto == $n)' >/dev/null; echo $?)"
+api GET "/api/routers/999999999/secreto"
+comprobar "Router: consultar el secreto de un router que no existe, 404" "$(codigo_es 404; echo $?)"
 
 api POST /api/routers "$(jq -n --arg n "$ROUTER_PRUEBA-2" '{nombre:$n,empresa:"Empresa de prueba",redes:["127.0.0.0/8"]}')"
 comprobar "Router: una red que se superpone con otro router se rechaza, 409" "$(codigo_es 409; echo $?)" "$CUERPO"

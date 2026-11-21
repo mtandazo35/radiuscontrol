@@ -344,6 +344,7 @@ func (a *App) rutas() http.Handler {
 	m.HandleFunc("POST /api/routers", cambia(a.crearRouter))
 	m.HandleFunc("PUT /api/routers/{id}", cambia(a.editarRouter))
 	m.HandleFunc("DELETE /api/routers/{id}", cambia(a.borrarRouter))
+	m.HandleFunc("GET /api/routers/{id}/secreto", a.admin(a.verSecreto))
 	m.HandleFunc("POST /api/routers/{id}/secreto", cambia(a.rotarSecreto))
 	m.HandleFunc("POST /api/accesos/masivo", cambia(a.cambioMasivo))
 
