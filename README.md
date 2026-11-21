@@ -27,6 +27,17 @@ El panel tiene tema oscuro por omisión y tema claro, y se puede usar desde el t
 la barra superior hay un filtro por router, que afecta a Inicio, Routers y
 Autenticaciones, y un botón para volver a pedir los datos.
 
+En todas las tablas:
+
+- **Mover columnas**: arrastra un encabezado y suéltalo donde quieras la columna (con el
+  teclado, Alt + flecha izquierda o derecha sobre el encabezado).
+- **Ordenar**: pulsa un encabezado para ordenar por esa columna; otra pulsación invierte
+  el sentido. En Autenticaciones y en el registro de actividad, que están paginados,
+  ordena el servidor sobre todos los registros, no solo sobre la página a la vista.
+- El orden de las columnas y de las filas se recuerda mientras dure la sesión y se olvida
+  al salir del panel. «Restablecer columnas y orden», bajo la tabla, lo devuelve a como
+  venía.
+
 ### Inicio
 
 - Autenticaciones y rechazos de las últimas 24 horas, routers activos y usuarios activos.
