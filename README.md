@@ -44,7 +44,7 @@ En todas las tablas:
 - Gráfico de logins aceptados y rechazados de la última hora, de las últimas 12 o de las
   últimas 24: un pico de rechazos delata a alguien o algo reintentando.
 - Los últimos intentos, quién entra más, a quién se rechaza más, desde qué dirección y por
-  qué motivo.
+  qué motivo. Si la dirección tiene una descripción puesta, se muestra junto a ella.
 - Una tabla por router con sus redes, sus logins del día y el último login aceptado.
 
 ### Routers
@@ -263,7 +263,7 @@ agente las repone o las quita en un minuto como mucho.
 
 ## Pruebas
 
-`despliegue/probar.sh` ejecuta más de 230 pruebas de extremo a extremo en el propio
+`despliegue/probar.sh` ejecuta más de 240 pruebas de extremo a extremo en el propio
 servidor: usa la API como lo haría el panel y verifica el resultado con logins RADIUS
 reales contra FreeRADIUS y con las reglas reales de UFW. Crea sus propios datos, con su
 propia cuenta, y los borra al terminar. La evidencia queda en `despliegue/evidencias/`.
@@ -279,6 +279,8 @@ propia cuenta, y los borra al terminar. La evidencia queda en `despliegue/eviden
   como regla de SSH en Accesos al servidor.
 - Mover columnas arrastrando no funciona en pantallas táctiles; ordenar pulsando el
   encabezado sí.
+- El buscador de Autenticaciones busca por la dirección de origen, no por la descripción
+  que se le haya puesto.
 - La contraseña de un usuario MikroTik creado antes de la versión que permite consultarla
   no se puede recuperar: hay que ponerle una nueva para poder verla después.
 - El panel solo registra autenticaciones. No lleva contabilidad RADIUS (sesiones, tráfico
