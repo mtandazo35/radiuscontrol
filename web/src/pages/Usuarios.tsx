@@ -281,7 +281,7 @@ export default function Usuarios() {
               <ThOrden campo="clave" orden={orden} onOrden={ordenarPor}>
                 Contraseña cambiada
               </ThOrden>
-              <Th className="text-right">Acciones</Th>
+              <Th className="text-center">Acciones</Th>
             </tr>
           </thead>
           <tbody>
@@ -304,7 +304,7 @@ export default function Usuarios() {
                 </Td>
                 <Td className="whitespace-nowrap text-muted-foreground">{fecha(u.clave_cambiada)}</Td>
                 <Td>
-                  <div className="flex flex-nowrap items-center justify-end gap-1 whitespace-nowrap">
+                  <div className="flex flex-nowrap items-center justify-center gap-1 whitespace-nowrap">
                     <Button
                       size="sm"
                       variant="outline"
@@ -315,7 +315,7 @@ export default function Usuarios() {
                     <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-foreground" onClick={() => setCambio({ usuario: u, clave: "" })}>
                       Restablecer contraseña
                     </Button>
-                    <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-foreground" onClick={() => alternar(u)}>
+                    <Button size="sm" variant="ghost" className="w-[5.75rem] text-muted-foreground hover:text-foreground" onClick={() => alternar(u)}>
                       {u.activo ? "Suspender" : "Activar"}
                     </Button>
                     <Button size="sm" variant="ghost" className="text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => borrar(u)}>

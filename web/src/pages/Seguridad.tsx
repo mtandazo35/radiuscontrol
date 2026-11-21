@@ -170,7 +170,7 @@ function Operadores() {
             <Th>Rol</Th>
             <Th>Estado</Th>
             <Th>Último acceso</Th>
-            <Th className="text-right">Acciones</Th>
+            <Th className="text-center">Acciones</Th>
           </tr>
         </thead>
         <tbody>
@@ -205,7 +205,7 @@ function Operadores() {
                   <div className="text-xs">{o.sesiones} sesión(es) abierta(s)</div>
                 </Td>
                 <Td>
-                  <div className="flex flex-nowrap items-center justify-end gap-1 whitespace-nowrap">
+                  <div className="flex flex-nowrap items-center justify-center gap-1 whitespace-nowrap">
                     {yo && (
                       <Button size="sm" onClick={() => setMiCuenta(true)}>
                         <UserCog /> Mi cuenta
@@ -227,7 +227,7 @@ function Operadores() {
                       </Button>
                     )}
                     {!yo && (
-                      <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-foreground" onClick={() => hacer(() => api("PUT", `/operadores/${o.id}`, { rol: o.rol, activo: !o.activo }))}>
+                      <Button size="sm" variant="ghost" className="w-[5.75rem] text-muted-foreground hover:text-foreground" onClick={() => hacer(() => api("PUT", `/operadores/${o.id}`, { rol: o.rol, activo: !o.activo }))}>
                         {o.activo ? "Suspender" : "Activar"}
                       </Button>
                     )}
@@ -354,7 +354,7 @@ function Sesiones() {
             <Th>Abierta</Th>
             <Th>Última actividad</Th>
             <Th>Caduca como máximo</Th>
-            <Th className="text-right">Acciones</Th>
+            <Th className="text-center">Acciones</Th>
           </tr>
         </thead>
         <tbody>
@@ -368,7 +368,7 @@ function Sesiones() {
               <Td className="whitespace-nowrap text-muted-foreground">{fecha(s.ultima_actividad)}</Td>
               <Td className="whitespace-nowrap text-muted-foreground">{fecha(s.expira)}</Td>
               <Td>
-                <div className="flex flex-wrap items-center justify-end gap-2">
+                <div className="flex items-center justify-center gap-2">
                   {s.actual && <Badge>Esta sesión</Badge>}
                   <Button size="sm" variant="outline" onClick={() => (s.actual ? cerrarLaMia() : cerrar(s))}>
                     Cerrar sesión
@@ -433,7 +433,7 @@ function Bloqueos({ onCambio }: { onCambio: number }) {
             <Th>Bloqueado</Th>
             <Th>Intentos fallidos</Th>
             <Th>Hasta</Th>
-            <Th className="text-right">Acciones</Th>
+            <Th className="text-center">Acciones</Th>
           </tr>
         </thead>
         <tbody>
@@ -454,7 +454,7 @@ function Bloqueos({ onCambio }: { onCambio: number }) {
               </Td>
               <Td>{b.intentos}</Td>
               <Td className="whitespace-nowrap text-muted-foreground">{fecha(b.hasta)}</Td>
-              <Td className="text-right">
+              <Td className="text-center">
                 <Button size="sm" variant="outline" onClick={() => desbloquear(() => api("POST", "/bloqueos/desbloquear", { ip: b.ip }))}>
                   Desbloquear
                 </Button>
@@ -469,7 +469,7 @@ function Bloqueos({ onCambio }: { onCambio: number }) {
               <Td className="font-medium">{c.usuario}</Td>
               <Td>{c.intentos}</Td>
               <Td className="whitespace-nowrap text-muted-foreground">{fecha(c.hasta)}</Td>
-              <Td className="text-right">
+              <Td className="text-center">
                 <Button size="sm" variant="outline" onClick={() => desbloquear(() => api("POST", `/operadores/${c.id}/desbloquear`, {}))}>
                   Desbloquear
                 </Button>
