@@ -26,6 +26,19 @@ sed -i '0,/^[[:space:]]*Post-Auth-Type REJECT {/s//\tPost-Auth-Type REJECT {\n\t
 # ya trae su identificador y su grupo general.
 sed -i '0,/^\tfiles$/s//\tfiles\n\trc_accesos/' "$SITIO"
 
+# MS-CHAP: la rama de rechazo distingue el sondeo con la contraseña vacía.
+awk -v bloque="$ORIGEN/rc_mschap.bloque" '
+/^\tAuth-Type MS-CHAP \{$/ && !hecho { while ((getline l < bloque) > 0) print l; salta = 1; hecho = 1; next }
+salta { if ($0 ~ /^\t\}$/) salta = 0; next }
+{ print }' "$SITIO" > "$SITIO.rc"
+cat "$SITIO.rc" > "$SITIO"
+rm -f "$SITIO.rc"
+
+if [ "$(grep -c 'rc_sondeo_mschap' "$SITIO")" != 1 ]; then
+    echo "preparar: no se pudo insertar la detección del sondeo MS-CHAP en $SITIO" >&2
+    exit 1
+fi
+
 if [ "$(grep -c 'rc_registrar_aceptado' "$SITIO")" != 1 ] || [ "$(grep -c 'rc_registrar_rechazado' "$SITIO")" != 1 ] ||
     [ "$(grep -c 'rc_accesos' "$SITIO")" != 1 ]; then
     echo "preparar: no se pudo insertar el registro o los accesos por router en $SITIO" >&2

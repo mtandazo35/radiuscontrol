@@ -1,0 +1,14 @@
+	Auth-Type MS-CHAP {
+		#  RadiusControl: si la respuesta no es válida, se comprueba si se
+		#  calculó con la contraseña vacía (la petición con la que RouterOS
+		#  acompaña el «none» con el que abre todo cliente SSH), solo para
+		#  registrarla aparte como sondeo. La petición se rechaza igual.
+		mschap {
+			reject = 1
+			fail = 1
+		}
+		if (!ok) {
+			rc_sondeo_mschap
+			reject
+		}
+	}

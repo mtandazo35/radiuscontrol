@@ -12,6 +12,7 @@ const filtros = [
   { valor: "", texto: "Todos", punto: "" },
   { valor: "aceptado", texto: "Access-Accept", punto: "bg-success" },
   { valor: "rechazado", texto: "Access-Reject", punto: "bg-destructive" },
+  { valor: "sondeo", texto: "Sondeos", punto: "bg-muted-foreground" },
 ];
 
 export default function Autenticaciones() {
@@ -160,11 +161,18 @@ export default function Autenticaciones() {
             )}
             {lista?.map((a) => {
               const rechazado = a.resultado === "rechazado";
+              const sondeo = a.resultado === "sondeo";
               return (
                 <tr key={a.id} className={cn(rechazado && "shadow-[inset_2px_0_0_hsl(var(--destructive))]")}>
                   <Td className="whitespace-nowrap py-2 text-muted-foreground">{fecha(a.fecha)}</Td>
                   <Td className="py-2">
-                    <Badge variant={rechazado ? "destructive" : "success"}>{rechazado ? "Access-Reject" : "Access-Accept"}</Badge>
+                    {sondeo ? (
+                      <Badge variant="muted" title="Petición con la contraseña vacía: el cliente SSH la envía al abrir la conexión, antes del login">
+                        Sondeo sin clave
+                      </Badge>
+                    ) : (
+                      <Badge variant={rechazado ? "destructive" : "success"}>{rechazado ? "Access-Reject" : "Access-Accept"}</Badge>
+                    )}
                   </Td>
                   <Td className="max-w-[14rem] truncate py-2 font-semibold" title={a.usuario}>
                     {a.usuario || "—"}
@@ -193,7 +201,9 @@ export default function Autenticaciones() {
                   </Td>
                   <Td className="whitespace-nowrap py-2">{a.metodo || "—"}</Td>
                   <Td className="max-w-[20rem] py-2">
-                    {rechazado ? (
+                    {sondeo ? (
+                      <span className="font-sans text-muted-foreground">Contraseña vacía al abrir la conexión. No es un intento fallido.</span>
+                    ) : rechazado ? (
                       <span className="font-semibold text-destructive" title={a.motivo}>
                         {motivoLegible(a.motivo)}
                       </span>

@@ -324,6 +324,70 @@ comprobar "Registro: un orden que no está en la lista se ignora y responde como
 api GET "/api/auditoria?orden=operador&dir=asc&tamano=50"
 comprobar "Actividad: ordenar por operador devuelve los operadores en orden, 200" \
     "$(codigo_es 200 && printf '%s' "$CUERPO" | jq -e '[.eventos[].operador | ascii_downcase] as $o | $o == ($o | sort)' >/dev/null; echo $?)"
+# ---------------------------------------------------------------- sondeo SSH
+# Todo cliente SSH abre con «none» y RouterOS lo acompaña de un MS-CHAPv2
+# calculado con la contraseña vacía, antes del login de verdad. Se rechaza y
+# se registra aparte, sin contar como fallo. radclient solo sabe MS-CHAPv1:
+# los atributos MS-CHAPv2 (RFC 2759) se calculan aquí con openssl.
+des_clave() { # <7 bytes en hex> -> clave DES de 8 bytes en hex
+    local n=$((16#$1)) k="" i
+    for i in 0 1 2 3 4 5 6 7; do
+        k+="$(printf '%02x' $(( ((n >> (49 - 7 * i)) & 0x7f) << 1 )))"
+    done
+    printf '%s' "$k"
+}
+hex_a_bin() { printf "$(printf '%s' "$1" | sed 's/../\\x&/g')"; }
+mschapv2() { # <usuario> <clave> -> atributos para radclient
+    local usuario="$1" clave="$2" auth peer hash reto z nt="" i
+    auth="$(openssl rand -hex 16)"
+    peer="$(openssl rand -hex 16)"
+    hash="$(printf '%s' "$clave" | iconv -f UTF-8 -t UTF-16LE | openssl dgst -md4 -provider legacy -provider default -r | cut -c1-32)"
+    reto="$({ hex_a_bin "$peer$auth"; printf '%s' "$usuario"; } | openssl dgst -sha1 -r | cut -c1-16)"
+    z="${hash}0000000000"
+    for i in 0 1 2; do
+        nt+="$(hex_a_bin "$reto" | openssl enc -des-ecb -nopad -K "$(des_clave "${z:$((i * 14)):14}")" -provider legacy -provider default | od -An -tx1 | tr -d ' \n')"
+    done
+    printf 'MS-CHAP-Challenge = 0x%s, MS-CHAP2-Response = 0x0000%s0000000000000000%s' "$auth" "$peer" "$nt"
+}
+cuantos() { api GET "/api/autenticaciones?buscar=$USUARIO_PRUEBA&resultado=$1&tamano=1"; printf '%s' "$CUERPO" | jq '.total'; }
+rechazos_inicio() { api GET "/api/resumen?router=$RID"; printf '%s' "$CUERPO" | jq '.rechazados_24h'; }
+
+A0="$(cuantos aceptado)"
+R0="$(cuantos rechazado)"
+S0="$(cuantos sondeo)"
+RI0="$(rechazos_inicio)"
+S="$(radius 127.0.0.1 /tmp/secreto "User-Name = \"$USUARIO_PRUEBA\", $(mschapv2 "$USUARIO_PRUEBA" "")")"
+comprobar "Sondeo SSH: el MS-CHAPv2 con la contraseña vacía se rechaza y la respuesta no trae MS-CHAP2-Success" \
+    "$(printf '%s' "$S" | grep -q 'Access-Reject' && ! printf '%s' "$S" | grep -q 'MS-CHAP2-Success'; echo $?)" "$(printf '%s' "$S" | grep -i 'received\|MS-CHAP' | tail -4)"
+S="$(radius 127.0.0.1 /tmp/secreto "User-Name = \"$USUARIO_PRUEBA\", $(mschapv2 "$USUARIO_PRUEBA" "$CLAVE")")"
+comprobar "Sondeo SSH: el MS-CHAPv2 con la clave buena que le sigue se acepta" \
+    "$(printf '%s' "$S" | grep -q 'Access-Accept'; echo $?)" "$(printf '%s' "$S" | grep -i 'received' | tail -2)"
+sleep 6
+A1="$(cuantos aceptado)"
+R1="$(cuantos rechazado)"
+S1="$(cuantos sondeo)"
+RI1="$(rechazos_inicio)"
+comprobar "Sondeo SSH: sondeo más clave buena dejan un acierto, un sondeo aparte y ningún rechazo contado" \
+    "$([ $((A1 - A0)) = 1 ] && [ $((S1 - S0)) = 1 ] && [ "$R1" = "$R0" ] && [ "$RI1" = "$RI0" ]; echo $?)" \
+    "aceptados +$((A1 - A0)), sondeos +$((S1 - S0)), rechazados +$((R1 - R0)), rechazos en Inicio +$((RI1 - RI0))"
+api GET "/api/autenticaciones?buscar=$USUARIO_PRUEBA&tamano=100"
+comprobar "Sondeo SSH: «Todos» no muestra los sondeos" \
+    "$(printf '%s' "$CUERPO" | jq -e '[.autenticaciones[] | select(.resultado == "sondeo")] | length == 0' >/dev/null; echo $?)"
+api GET "/api/resumen?router=$RID"
+comprobar "Sondeo SSH: «Últimos intentos» de Inicio no muestra los sondeos" \
+    "$(printf '%s' "$CUERPO" | jq -e '[.recientes[] | select(.resultado == "sondeo")] | length == 0' >/dev/null; echo $?)"
+S="$(radius 127.0.0.1 /tmp/secreto "User-Name = \"$USUARIO_PRUEBA\", $(mschapv2 "$USUARIO_PRUEBA" "clave-equivocada-no-vacia")")"
+sleep 6
+R2="$(cuantos rechazado)"
+S2="$(cuantos sondeo)"
+comprobar "Sondeo SSH: una clave equivocada que no está vacía sigue siendo un rechazo normal" \
+    "$(printf '%s' "$S" | grep -q 'Access-Reject' && [ $((R2 - R1)) = 1 ] && [ "$S2" = "$S1" ]; echo $?)" "rechazados +$((R2 - R1)), sondeos +$((S2 - S1))"
+S="$(radius 127.0.0.1 /tmp/secreto "User-Name = \"$USUARIO_PRUEBA\", User-Password = \"\"")"
+sleep 6
+S3="$(cuantos sondeo)"
+comprobar "Sondeo SSH: un PAP con la contraseña vacía se rechaza y también cuenta como sondeo" \
+    "$(printf '%s' "$S" | grep -q 'Access-Reject' && [ $((S3 - S2)) = 1 ]; echo $?)" "sondeos +$((S3 - S2))"
+
 # Un login que declara desde qué dirección entra la persona (Calling-Station-Id).
 radius 127.0.0.1 /tmp/secreto "$PAP_OK, Calling-Station-Id = \"192.0.2.77\"" >/dev/null
 sleep 6

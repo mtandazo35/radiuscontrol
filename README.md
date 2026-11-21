@@ -85,6 +85,11 @@ En todas las tablas:
 - Buscador, filtro rápido por resultado (todos, aceptados, rechazados) y paginación. Los
   rechazos van marcados en rojo con su motivo.
 - Las direcciones se copian con un clic.
+- **Sondeos sin clave**: al abrir una conexión SSH, antes de pedir la contraseña, RouterOS
+  manda a RADIUS una petición con la contraseña vacía. Se rechaza como siempre, pero se
+  registra aparte como «Sondeo sin clave»: no sale en «Todos», no cuenta como rechazo en
+  Inicio y se ve con el filtro «Sondeos». Una contraseña equivocada que no está vacía sigue
+  siendo un rechazo normal.
 - **Orígenes con nombre**: a la dirección desde la que entra un sistema (un servidor de
   respaldos, la oficina, el monitoreo) se le puede poner una descripción, que aparece bajo
   la dirección. Se pone con el lápiz que hay junto a cada dirección, o por redes enteras

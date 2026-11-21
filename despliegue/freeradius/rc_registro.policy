@@ -43,6 +43,12 @@ rc_registrar_aceptado {
 
 rc_registrar_rechazado {
 	rc_metodo
+	#  Un PAP con la contraseña vacía es el mismo sondeo que el de MS-CHAP.
+	if (&request:User-Password && (&request:User-Password == "")) {
+		update control {
+			&Tmp-String-2 := "sondeo"
+		}
+	}
 	update control {
 		&Tmp-String-1 := "rechazado"
 	}
@@ -50,4 +56,35 @@ rc_registrar_rechazado {
 		fail = 1
 	}
 	ok
+}
+
+#  Marca como «sondeo» una respuesta MS-CHAP calculada con la contraseña vacía.
+#  Solo se llama cuando la comprobación normal ya falló, y quien la llama
+#  rechaza la petición después: no cambia quién entra, solo cómo se registra.
+rc_sondeo_mschap {
+	update control {
+		&NT-Password := 0x31d6cfe0d16ae931b73c59d7e0c089c0
+	}
+	rc_mschap_vacia {
+		reject = 1
+		fail = 1
+		invalid = 1
+		notfound = 1
+		noop = 1
+		userlock = 1
+		handled = 1
+	}
+	if (ok) {
+		update control {
+			&Tmp-String-2 := "sondeo"
+		}
+	}
+	#  Lo que haya añadido la segunda comprobación no sale en la respuesta.
+	update reply {
+		&MS-CHAP2-Success !* ANY
+		&MS-MPPE-Recv-Key !* ANY
+		&MS-MPPE-Send-Key !* ANY
+		&MS-MPPE-Encryption-Policy !* ANY
+		&MS-MPPE-Encryption-Types !* ANY
+	}
 }

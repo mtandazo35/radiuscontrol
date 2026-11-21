@@ -37,7 +37,8 @@ type Autenticacion struct {
 	Motivo        string    `json:"motivo"`
 }
 
-const camposRegistro = 11
+// Las líneas antiguas tienen 11 campos; desde el sondeo SSH, 12.
+const camposRegistro = 12
 
 func descodificar(s string) string {
 	if v, err := url.PathUnescape(s); err == nil {
@@ -50,7 +51,7 @@ func descodificar(s string) string {
 // (ver despliegue/freeradius/rc_registro.mod).
 func parsearLinea(linea string) (*Autenticacion, error) {
 	c := strings.Split(linea, "\t")
-	if len(c) != camposRegistro {
+	if len(c) != camposRegistro && len(c) != camposRegistro-1 {
 		return nil, fmt.Errorf("se esperaban %d campos y hay %d", camposRegistro, len(c))
 	}
 	epoca, err := strconv.ParseInt(c[0], 10, 64)
@@ -71,6 +72,11 @@ func parsearLinea(linea string) (*Autenticacion, error) {
 		Metodo:        c[8],
 		Grupo:         descodificar(c[9]),
 		Motivo:        descodificar(c[10]),
+	}
+	// Petición con la contraseña vacía (el «none» con el que abre SSH): se
+	// rechazó igual, pero no es un intento fallido de nadie.
+	if len(c) == camposRegistro && c[11] == "sondeo" && a.Resultado == "rechazado" {
+		a.Resultado = "sondeo"
 	}
 	// El nombre corto del cliente lo genera el compilador: rc-<router>-<red>.
 	if p := strings.Split(descodificar(c[4]), "-"); len(p) == 3 && p[0] == "rc" {
@@ -234,7 +240,7 @@ func (a *App) listarAutenticaciones(w http.ResponseWriter, r *http.Request, _ *O
 		pagina = 1
 	}
 	resultado := q.Get("resultado")
-	if resultado != "" && resultado != "aceptado" && resultado != "rechazado" {
+	if resultado != "" && resultado != "aceptado" && resultado != "rechazado" && resultado != "sondeo" {
 		return malo("Filtro de resultado no válido.")
 	}
 	buscar := strings.TrimSpace(q.Get("buscar"))
@@ -258,7 +264,8 @@ func (a *App) listarAutenticaciones(w http.ResponseWriter, r *http.Request, _ *O
 	if q.Get("dir") == "asc" {
 		sentido = "ASC"
 	}
-	const filtro = `($1 = '' OR resultado = $1)
+	// Sin filtro, los sondeos no salen: se ven solo pidiéndolos.
+	const filtro = `(($1 = '' AND resultado <> 'sondeo') OR resultado = $1)
 		AND ($2 = '' OR usuario ILIKE '%' || $2 || '%' OR router_nombre ILIKE '%' || $2 || '%'
 		     OR empresa_nombre ILIKE '%' || $2 || '%' OR ip_origen LIKE $2 || '%')
 		AND ($3 = 0 OR router_id = $3)`

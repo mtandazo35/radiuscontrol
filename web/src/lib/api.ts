@@ -277,7 +277,7 @@ export interface Empresa {
 export interface Autenticacion {
   id: number;
   fecha: string;
-  resultado: "aceptado" | "rechazado";
+  resultado: "aceptado" | "rechazado" | "sondeo";
   usuario: string;
   ip_origen: string;
   router_id: number | null;

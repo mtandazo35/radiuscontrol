@@ -215,7 +215,7 @@ func (a *App) verResumen(w http.ResponseWriter, r *http.Request, op *Operador) e
 	recientes := []resumenReciente{}
 	filas, err = a.db.Query(ctx, `SELECT fecha, resultado, usuario, router_nombre, origen, metodo, motivo,
 		COALESCE(nombre_origen(origen), '')
-		FROM autenticaciones WHERE $1 = 0 OR router_id = $1 ORDER BY id DESC LIMIT 8`, router)
+		FROM autenticaciones WHERE ($1 = 0 OR router_id = $1) AND resultado <> 'sondeo' ORDER BY id DESC LIMIT 8`, router)
 	if err != nil {
 		return err
 	}
