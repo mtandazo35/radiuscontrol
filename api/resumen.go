@@ -41,14 +41,14 @@ type resumenCuenta struct {
 }
 
 type resumenReciente struct {
-	Fecha     time.Time `json:"fecha"`
-	Resultado string    `json:"resultado"`
-	Usuario   string    `json:"usuario"`
-	Router    string    `json:"router"`
-	Origen    string    `json:"origen"`
-	OrigenNombre string `json:"origen_nombre"`
-	Metodo    string    `json:"metodo"`
-	Motivo    string    `json:"motivo"`
+	Fecha        time.Time `json:"fecha"`
+	Resultado    string    `json:"resultado"`
+	Usuario      string    `json:"usuario"`
+	Router       string    `json:"router"`
+	Origen       string    `json:"origen"`
+	OrigenNombre string    `json:"origen_nombre"`
+	Metodo       string    `json:"metodo"`
+	Motivo       string    `json:"motivo"`
 }
 
 // Periodos del gráfico: horas a mostrar y minutos de cada barra.
