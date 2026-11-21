@@ -166,6 +166,12 @@ export function ProveedorActualizacion({ children }: { children: React.ReactNode
     const t = window.setInterval(() => setAhora(Date.now()), 1000);
     return () => window.clearInterval(t);
   }, [enMarcha]);
+  // El total sale de la hora de inicio que anotó el servidor, para que valga
+  // también si esta ventana se abre a media actualización o se recarga la
+  // página; si los relojes no cuadran, se usa lo medido aquí.
+  const desdeServidor = pv?.inicio ? ahora - new Date(pv.inicio).getTime() : -1;
+  const llevaTotal =
+    desdeServidor >= 0 && desdeServidor < 2 * 3600 * 1000 ? desdeServidor : inicioTotal.current !== null ? ahora - inicioTotal.current : null;
   // Al terminar, la duración exacta sale de las horas que anotó el servidor.
   const duro = pv?.inicio && pv.fin ? new Date(pv.fin).getTime() - new Date(pv.inicio).getTime() : null;
 
@@ -222,9 +228,9 @@ export function ProveedorActualizacion({ children }: { children: React.ReactNode
             )}
             {!terminada && !sinRespuesta && (
               <p className="text-sm text-muted-foreground">
-                {inicioTotal.current !== null && (
+                {llevaTotal !== null && (
                   <>
-                    Lleva <span className="font-mono text-foreground">{duracion(ahora - inicioTotal.current)}</span>; en total suele tardar entre 3 y
+                    Lleva <span className="font-mono text-foreground">{duracion(llevaTotal)}</span>; en total suele tardar entre 3 y
                     6 minutos.{" "}
                   </>
                 )}
