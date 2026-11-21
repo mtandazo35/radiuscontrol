@@ -40,8 +40,11 @@ Autenticaciones, y un botón para volver a pedir los datos.
 
 - Alta, edición, suspensión y baja. Cada router se identifica por la dirección de origen
   de sus paquetes y pertenece a una empresa. Dos routers no pueden compartir dirección.
-- Un secreto RADIUS por router, generado por el panel o introducido si ya existía. Se
-  muestra una sola vez, junto con las líneas para pegar en el MikroTik. Se puede rotar.
+- Un secreto RADIUS por router, generado por el panel o introducido si ya existía. Al
+  crearlo se muestra junto con las líneas para pegar en el MikroTik.
+- Al editar un router, un administrador puede ver el secreto en uso y escribir uno nuevo
+  que lo sustituya. Cada consulta del secreto queda en el registro de actividad. También
+  se puede rotar por uno aleatorio con un clic.
 - **Acceso por router**:
   - *Manejo general*: entran todos los usuarios activos, cada uno con su grupo.
   - *Restringido*: solo entran los usuarios que elijas, cada uno con el permiso que le
