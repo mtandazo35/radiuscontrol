@@ -57,6 +57,9 @@ function CampoClave({
   );
 }
 
+type Agrupacion = "" | "grupo" | "estado";
+const CLAVE_AGRUPAR = "rc-tabla:usuarios:agrupar";
+
 export default function Usuarios() {
   const { avisar, avisarError, confirmar, refrescarEstado } = useApp();
   const [lista, setLista] = React.useState<Usuario[] | null>(null);
@@ -102,6 +105,46 @@ export default function Usuarios() {
       .filter((u) => !fEstado || u.activo === (fEstado === "activo"))
       .sort((x, y) => (comparar(valor(x), valor(y)) || comparar(x.usuario, y.usuario)) * (orden.asc ? 1 : -1));
   }, [lista, buscar, fGrupo, fEstado, orden]);
+
+  // Agrupar la tabla por grupo de RouterOS o por estado. Se recuerda durante la
+  // sesión, como el orden de las columnas (y se olvida al salir del panel).
+  const [agrupar, setAgrupar] = React.useState<Agrupacion>(() => {
+    try {
+      const v = sessionStorage.getItem(CLAVE_AGRUPAR);
+      return v === "grupo" || v === "estado" ? v : "";
+    } catch {
+      return "";
+    }
+  });
+  const cambiarAgrupar = (v: Agrupacion) => {
+    setAgrupar(v);
+    try {
+      sessionStorage.setItem(CLAVE_AGRUPAR, v);
+    } catch {
+      // Sin almacenamiento: vale hasta recargar.
+    }
+  };
+  const bloques = React.useMemo(() => {
+    if (!visibles || visibles.length === 0) return [];
+    if (agrupar === "") return [{ clave: "todos", titulo: null as string | null, usuarios: visibles }];
+    const mapa = new Map<string, Usuario[]>();
+    for (const u of visibles) {
+      const k = agrupar === "grupo" ? u.grupo : u.activo ? "activo" : "suspendido";
+      mapa.set(k, [...(mapa.get(k) ?? []), u]);
+    }
+    // Los grupos de fábrica primero (full, write, read) y luego los propios por
+    // nombre; activos antes que suspendidos.
+    const fabrica = ["full", "write", "read"];
+    const peso = (g: string) => (fabrica.includes(g) ? fabrica.indexOf(g) : fabrica.length);
+    const claves = [...mapa.keys()].sort((a, b) =>
+      agrupar === "estado" ? (a === "activo" ? -1 : 1) : peso(a) - peso(b) || comparar(a, b),
+    );
+    return claves.map((k) => ({
+      clave: k,
+      titulo: agrupar === "grupo" ? `Grupo ${k}` : k === "activo" ? "Activos" : "Suspendidos",
+      usuarios: mapa.get(k) ?? [],
+    }));
+  }, [visibles, agrupar]);
 
   const abrir = (f: Formulario) => {
     setOtroGrupo(!gruposBase.includes(f.grupo));
@@ -244,6 +287,11 @@ export default function Usuarios() {
           <option value="activo">Activos</option>
           <option value="suspendido">Suspendidos</option>
         </Select>
+        <Select className="col-span-1 w-full sm:w-auto" aria-label="Agrupar" value={agrupar} onChange={(e) => cambiarAgrupar(e.target.value as Agrupacion)}>
+          <option value="">Sin agrupar</option>
+          <option value="grupo">Por grupo</option>
+          <option value="estado">Por estado actual</option>
+        </Select>
         {conFiltros && (
           <Button
             variant="ghost"
@@ -284,15 +332,28 @@ export default function Usuarios() {
               <Th sinOrden className="text-center">Acciones</Th>
             </tr>
           </thead>
-          <tbody>
-            {visibles?.length === 0 && (
+          {visibles?.length === 0 && (
+            <tbody>
               <tr>
                 <Td colSpan={5}>
                   <EstadoVacio titulo={lista?.length ? "Ningún usuario coincide con la búsqueda o los filtros." : "Todavía no hay usuarios. Crea el primero con «Nuevo usuario»."} />
                 </Td>
               </tr>
-            )}
-            {visibles?.map((u) => (
+            </tbody>
+          )}
+          {bloques.map((b) => (
+            <tbody key={b.clave}>
+              {b.titulo !== null && (
+                <tr className="hover:!bg-transparent">
+                  <Td colSpan={5} className="bg-muted/40 py-2">
+                    <span className="font-semibold">{b.titulo}</span>
+                    <span className="ml-2 font-mono text-xs text-muted-foreground">
+                      {b.usuarios.length} {b.usuarios.length === 1 ? "usuario" : "usuarios"}
+                    </span>
+                  </Td>
+                </tr>
+              )}
+              {b.usuarios.map((u) => (
               <tr key={u.id}>
                 <Td>
                   <div className="whitespace-nowrap font-medium">{u.usuario}</div>
@@ -324,8 +385,9 @@ export default function Usuarios() {
                   </div>
                 </Td>
               </tr>
-            ))}
-          </tbody>
+              ))}
+            </tbody>
+          ))}
         </Table>
       </Card>
 

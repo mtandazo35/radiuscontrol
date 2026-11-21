@@ -81,6 +81,8 @@ En todas las tablas:
 - Al editar un usuario, un administrador puede ver la contraseña en uso y escribir una
   nueva que la sustituya. Cada consulta queda en el registro de actividad.
 - Buscador por usuario o nombre, filtros por grupo y estado, y orden por cualquier columna.
+- **Agrupar** por grupo de RouterOS (primero `full`, `write` y `read`, luego los propios) o
+  por estado actual, igual que en Routers.
 
 ### Autenticaciones
 
