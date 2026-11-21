@@ -186,7 +186,7 @@ function Operadores() {
                 <Td valor={o.rol}>
                   <select
                     aria-label={`Rol de ${o.usuario}`}
-                    className={selector + " max-w-[11rem]"}
+                    className={selector + " w-[10.5rem]"}
                     value={o.rol}
                     disabled={yo}
                     onChange={(e) => hacer(() => api("PUT", `/operadores/${o.id}`, { rol: e.target.value, activo: o.activo }))}
