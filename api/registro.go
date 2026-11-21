@@ -264,6 +264,12 @@ func (a *App) listarAutenticaciones(w http.ResponseWriter, r *http.Request, _ *O
 	if q.Get("dir") == "asc" {
 		sentido = "ASC"
 	}
+	// Agrupar: las filas de un mismo grupo salen seguidas (el grupo manda en el
+	// orden) y se devuelve cuántas tiene cada grupo en total, no solo en la
+	// página. Igual que el orden, solo columnas de esta lista.
+	agruparSQL, agrupa := map[string]string{
+		"router": "router_nombre", "empresa": "empresa_nombre", "usuario": "usuario", "resultado": "resultado",
+	}[q.Get("agrupar")]
 	// Sin filtro, los sondeos no salen: se ven solo pidiéndolos.
 	const filtro = `(($1 = '' AND resultado <> 'sondeo') OR resultado = $1)
 		AND ($2 = '' OR usuario ILIKE '%' || $2 || '%' OR router_nombre ILIKE '%' || $2 || '%'
@@ -285,10 +291,34 @@ func (a *App) listarAutenticaciones(w http.ResponseWriter, r *http.Request, _ *O
 		pagina = paginas
 	}
 
+	prefijo := ""
+	grupos := []map[string]any{}
+	if agrupa {
+		prefijo = agruparSQL + " ASC, "
+		g, err := a.db.Query(ctx, `SELECT `+agruparSQL+`, count(*) FROM autenticaciones WHERE `+filtro+` GROUP BY 1 ORDER BY 1`,
+			resultado, buscar, router)
+		if err != nil {
+			return err
+		}
+		for g.Next() {
+			var valor string
+			var n int
+			if err := g.Scan(&valor, &n); err != nil {
+				g.Close()
+				return err
+			}
+			grupos = append(grupos, map[string]any{"valor": valor, "total": n})
+		}
+		g.Close()
+		if err := g.Err(); err != nil {
+			return err
+		}
+	}
+
 	filas, err := a.db.Query(ctx, `SELECT id, fecha, resultado, usuario, ip_origen, router_id,
 		router_nombre, empresa_nombre, nas_identifier, nas_ip, origen, metodo, grupo, motivo,
 		COALESCE(nombre_origen(origen), '')
-		FROM autenticaciones WHERE `+filtro+` ORDER BY `+ordenSQL+` `+sentido+`, id DESC LIMIT $4 OFFSET $5`,
+		FROM autenticaciones WHERE `+filtro+` ORDER BY `+prefijo+ordenSQL+` `+sentido+`, id DESC LIMIT $4 OFFSET $5`,
 		resultado, buscar, router, tamano, (pagina-1)*tamano)
 	if err != nil {
 		return err
@@ -308,6 +338,7 @@ func (a *App) listarAutenticaciones(w http.ResponseWriter, r *http.Request, _ *O
 	}
 	escribirJSON(w, http.StatusOK, map[string]any{
 		"autenticaciones": lista, "total": total, "pagina": pagina, "paginas": paginas, "tamano": tamano,
+		"grupos": grupos,
 	})
 	return nil
 }

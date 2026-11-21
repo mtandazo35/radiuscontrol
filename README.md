@@ -34,9 +34,11 @@ En todas las tablas:
 - **Ordenar**: pulsa un encabezado para ordenar por esa columna; otra pulsación invierte
   el sentido. En Autenticaciones y en el registro de actividad, que están paginados,
   ordena el servidor sobre todos los registros, no solo sobre la página a la vista.
-- **Agrupar** (en Routers y en Usuarios MikroTik): el selector «Agrupar», junto a los
-  filtros, reparte las filas en bloques con un encabezado y su número de elementos. El
-  orden por columna se aplica dentro de cada bloque.
+- **Agrupar** (en Routers, Usuarios MikroTik y Autenticaciones): el selector «Agrupar»,
+  junto a los filtros, reparte las filas en bloques con un encabezado y su número de
+  elementos. El orden por columna se aplica dentro de cada bloque. En Autenticaciones,
+  que está paginada, agrupa el servidor sobre todos los registros: cada bloque sale entero
+  y seguido, y su encabezado dice cuántos tiene en total.
 - El orden de las columnas, el de las filas y la agrupación se recuerdan mientras dure la
   sesión y se olvidan al salir del panel. «Restablecer columnas y orden», bajo la tabla,
   devuelve columnas y orden a como venían.
@@ -94,6 +96,7 @@ En todas las tablas:
 - Buscador, filtro rápido por resultado (todos, aceptados, rechazados) y paginación. Los
   rechazos van marcados en rojo con su motivo.
 - Las direcciones se copian con un clic.
+- Agrupar por router, por empresa, por usuario o por resultado.
 - **Sondeos sin clave**: al abrir una conexión SSH, antes de pedir la contraseña, RouterOS
   manda a RADIUS una petición con la contraseña vacía. Se rechaza como siempre, pero se
   registra aparte como «Sondeo sin clave»: no sale en «Todos», no cuenta como rechazo en

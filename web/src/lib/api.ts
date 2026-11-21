@@ -255,6 +255,8 @@ export interface AccesosServidor {
 
 export interface PaginaAutenticaciones {
   autenticaciones: Autenticacion[];
+  // Con «agrupar»: cuántas autenticaciones tiene cada grupo en total.
+  grupos?: { valor: string; total: number }[];
   total: number;
   pagina: number;
   paginas: number;

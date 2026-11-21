@@ -321,6 +321,18 @@ comprobar "Registro: ordenar por resultado agrupa aceptados antes que rechazados
 api GET "/api/autenticaciones?buscar=$USUARIO_PRUEBA&orden=id;DROP&dir=x&tamano=5"
 comprobar "Registro: un orden que no está en la lista se ignora y responde como siempre, 200" \
     "$(codigo_es 200 && printf '%s' "$CUERPO" | jq -e '[.autenticaciones[].id] as $i | $i == ($i | sort | reverse)' >/dev/null; echo $?)"
+api GET "/api/autenticaciones?buscar=$USUARIO_PRUEBA&agrupar=resultado&tamano=100"
+comprobar "Registro: agrupar por resultado deja las filas de cada grupo seguidas y da el total de cada uno" \
+    "$(codigo_es 200 && printf '%s' "$CUERPO" | jq -e '
+        [.autenticaciones[].resultado] as $r
+        | ($r == ($r | sort))
+          and (.grupos | length) > 1
+          and ([.grupos[].total] | add) == .total
+          and all(.grupos[]; .valor as $v | .total == ([$r[] | select(. == $v)] | length))' >/dev/null; echo $?)" \
+    "$(printf '%s' "$CUERPO" | jq -c '{total, grupos}')"
+api GET "/api/autenticaciones?buscar=$USUARIO_PRUEBA&agrupar=lo-que-sea&tamano=5"
+comprobar "Registro: una agrupación que no está en la lista se ignora, 200" \
+    "$(codigo_es 200 && printf '%s' "$CUERPO" | jq -e '(.grupos | length) == 0' >/dev/null; echo $?)"
 api GET "/api/auditoria?orden=operador&dir=asc&tamano=50"
 comprobar "Actividad: ordenar por operador devuelve los operadores en orden, 200" \
     "$(codigo_es 200 && printf '%s' "$CUERPO" | jq -e '[.eventos[].operador | ascii_downcase] as $o | $o == ($o | sort)' >/dev/null; echo $?)"

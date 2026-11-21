@@ -1,9 +1,9 @@
 import { Pencil } from "lucide-react";
 import * as React from "react";
-import { Badge, Card, Copiable, EstadoVacio, Input, Paginacion, Table, Td, ThOrden, useOrden } from "@/components/ui";
+import { Badge, Card, Copiable, EstadoVacio, Input, Paginacion, Select, Table, Td, ThOrden, useOrden } from "@/components/ui";
 import { ModalOrigen, type BorradorOrigen } from "@/components/Origenes";
 import { BotonVaciar } from "@/components/Vaciar";
-import { api, type PaginaAutenticaciones } from "@/lib/api";
+import { api, type Autenticacion, type PaginaAutenticaciones } from "@/lib/api";
 import { cn, fecha, motivoLegible } from "@/lib/utils";
 import { useApp } from "../contexto";
 import { useFiltro } from "../filtro";
@@ -14,6 +14,20 @@ const filtros = [
   { valor: "rechazado", texto: "Access-Reject", punto: "bg-destructive" },
   { valor: "sondeo", texto: "Sondeos", punto: "bg-muted-foreground" },
 ];
+
+type Agrupacion = "" | "router" | "empresa" | "usuario" | "resultado";
+const CLAVE_AGRUPAR = "rc-tabla:autenticaciones:agrupar";
+
+// Valor del campo por el que se agrupa y cómo se titula su bloque.
+function claveGrupo(a: Autenticacion, agrupar: Agrupacion) {
+  return agrupar === "router" ? a.router : agrupar === "empresa" ? a.empresa : agrupar === "usuario" ? a.usuario : a.resultado;
+}
+const nombreResultado: Record<string, string> = { aceptado: "Access-Accept", rechazado: "Access-Reject", sondeo: "Sondeos sin clave" };
+function tituloGrupo(valor: string, agrupar: Agrupacion) {
+  if (agrupar === "resultado") return nombreResultado[valor] ?? valor;
+  if (valor) return valor;
+  return agrupar === "router" ? "Router desconocido" : agrupar === "empresa" ? "Sin empresa" : "Sin usuario";
+}
 
 export default function Autenticaciones() {
   const { avisarError, operador } = useApp();
@@ -34,6 +48,40 @@ export default function Autenticaciones() {
     setPagina(1);
   };
 
+  // Agrupar: lo ordena el servidor por el grupo, así cada bloque sale entero
+  // y seguido. Se recuerda durante la sesión, como el resto de la tabla.
+  const [agrupar, setAgrupar] = React.useState<Agrupacion>(() => {
+    try {
+      const v = sessionStorage.getItem(CLAVE_AGRUPAR);
+      return v === "router" || v === "empresa" || v === "usuario" || v === "resultado" ? v : "";
+    } catch {
+      return "";
+    }
+  });
+  const cambiarAgrupar = (v: Agrupacion) => {
+    setAgrupar(v);
+    setPagina(1);
+    try {
+      sessionStorage.setItem(CLAVE_AGRUPAR, v);
+    } catch {
+      // Sin almacenamiento: vale hasta recargar.
+    }
+  };
+  // Bloques consecutivos de la página a la vista, con el total de cada grupo.
+  const bloques = React.useMemo(() => {
+    if (!lista || lista.length === 0) return [];
+    if (agrupar === "") return [{ clave: "todos", titulo: null as string | null, total: 0, filas: lista }];
+    const totales = new Map((datos?.grupos ?? []).map((g) => [g.valor, g.total]));
+    const salida: { clave: string; titulo: string | null; total: number; filas: Autenticacion[] }[] = [];
+    for (const a of lista) {
+      const valor = claveGrupo(a, agrupar);
+      const ultimo = salida[salida.length - 1];
+      if (ultimo && ultimo.clave === valor) ultimo.filas.push(a);
+      else salida.push({ clave: valor, titulo: tituloGrupo(valor, agrupar), total: totales.get(valor) ?? 0, filas: [a] });
+    }
+    return salida;
+  }, [lista, agrupar, datos]);
+
   // Al cambiar de router se vuelve a la primera página.
   React.useEffect(() => {
     setPagina(1);
@@ -48,6 +96,7 @@ export default function Autenticaciones() {
         if (routerId !== null) q.set("router", String(routerId));
         q.set("orden", orden.campo);
         q.set("dir", orden.asc ? "asc" : "desc");
+        if (agrupar) q.set("agrupar", agrupar);
         const r = await api<PaginaAutenticaciones>("GET", `/autenticaciones?${q}`, undefined, { auto: !avisar });
         setDatos(r);
         // El servidor corrige una página que ya no existe.
@@ -56,7 +105,7 @@ export default function Autenticaciones() {
         if (avisar) avisarError(e);
       }
     },
-    [resultado, buscar, routerId, pagina, tamano, orden, avisarError],
+    [resultado, buscar, routerId, pagina, tamano, orden, agrupar, avisarError],
   );
 
   React.useEffect(() => {
@@ -117,6 +166,13 @@ export default function Autenticaciones() {
             </button>
           ))}
         </div>
+        <Select className="col-span-2 w-full sm:w-auto" aria-label="Agrupar" value={agrupar} onChange={(e) => cambiarAgrupar(e.target.value as Agrupacion)}>
+          <option value="">Sin agrupar</option>
+          <option value="router">Por router</option>
+          <option value="empresa">Por empresa</option>
+          <option value="usuario">Por usuario</option>
+          <option value="resultado">Por resultado</option>
+        </Select>
       </div>
 
       {/* Visor de registros: fondo de consola, letra monoespaciada y los
@@ -151,15 +207,28 @@ export default function Autenticaciones() {
               </ThOrden>
             </tr>
           </thead>
-          <tbody>
-            {lista?.length === 0 && (
+          {lista?.length === 0 && (
+            <tbody>
               <tr>
                 <Td colSpan={8} className="font-sans text-sm">
                   <EstadoVacio titulo="No hay autenticaciones que coincidan." />
                 </Td>
               </tr>
-            )}
-            {lista?.map((a) => {
+            </tbody>
+          )}
+          {bloques.map((b, i) => (
+            <tbody key={`${i}-${b.clave}`}>
+              {b.titulo !== null && (
+                <tr className="hover:!bg-transparent">
+                  <Td colSpan={8} className="bg-muted/40 py-2 font-sans">
+                    <span className="text-sm font-semibold">{b.titulo}</span>
+                    <span className="ml-2 font-mono text-xs text-muted-foreground">
+                      {b.total} en total{b.total > b.filas.length ? `, ${b.filas.length} en esta página` : ""}
+                    </span>
+                  </Td>
+                </tr>
+              )}
+              {b.filas.map((a) => {
               const rechazado = a.resultado === "rechazado";
               const sondeo = a.resultado === "sondeo";
               return (
@@ -213,8 +282,9 @@ export default function Autenticaciones() {
                   </Td>
                 </tr>
               );
-            })}
-          </tbody>
+              })}
+            </tbody>
+          ))}
         </Table>
         <Paginacion
           pagina={datos?.pagina ?? 1}
