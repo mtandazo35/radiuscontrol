@@ -32,6 +32,22 @@ const nombrePaso: Record<string, string> = {
   comprobar: "Comprobar que todo responde",
 };
 
+// Lo que suele tardar cada paso, para que una espera larga no parezca un bloqueo.
+const notaPaso: Record<string, string> = {
+  descargar: "Unos segundos.",
+  respaldo: "Unos segundos.",
+  construir: "Es el paso más largo: suele tardar entre 2 y 4 minutos, porque compila el panel y la API y pasa sus pruebas.",
+  instalar: "Menos de un minuto. El panel se reinicia y esta ventana puede quedarse sin respuesta un momento.",
+  comprobar: "Hasta un par de minutos, mientras todos los servicios vuelven a responder.",
+};
+
+// «2 min 49 s», o «49 s» si no llega al minuto.
+function duracion(ms: number) {
+  const total = Math.max(0, Math.round(ms / 1000));
+  const min = Math.floor(total / 60);
+  return min > 0 ? `${min} min ${total % 60} s` : `${total} s`;
+}
+
 export function versionCorta(commit: string | undefined) {
   return commit ? commit.slice(0, 7) : "—";
 }
@@ -134,6 +150,25 @@ export function ProveedorActualizacion({ children }: { children: React.ReactNode
   const pasoActual = pv ? PASOS.indexOf(pv.paso) : -1;
   const vistaAvance = enMarcha || terminada;
 
+  // Tiempo transcurrido, medido en este navegador: del total y del paso en curso.
+  const [ahora, setAhora] = React.useState(() => Date.now());
+  const inicioTotal = React.useRef<number | null>(null);
+  const inicioPaso = React.useRef({ paso: -2, desde: 0 });
+  if (enMarcha) {
+    if (inicioTotal.current === null) inicioTotal.current = Date.now();
+    if (inicioPaso.current.paso !== pasoActual) inicioPaso.current = { paso: pasoActual, desde: Date.now() };
+  } else {
+    inicioTotal.current = null;
+    inicioPaso.current = { paso: -2, desde: 0 };
+  }
+  React.useEffect(() => {
+    if (!enMarcha) return;
+    const t = window.setInterval(() => setAhora(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, [enMarcha]);
+  // Al terminar, la duración exacta sale de las horas que anotó el servidor.
+  const duro = pv?.inicio && pv.fin ? new Date(pv.fin).getTime() - new Date(pv.inicio).getTime() : null;
+
   return (
     <Ctx.Provider value={valor}>
       {children}
@@ -153,18 +188,28 @@ export function ProveedorActualizacion({ children }: { children: React.ReactNode
                 const actual = pv ? i === pasoActual && pv.estado === "en-curso" : false;
                 const fallo = pv ? i === pasoActual && (pv.estado === "fallida" || pv.estado === "revertida") : false;
                 return (
-                  <li key={paso} className="flex items-center gap-3 text-sm">
-                    {hecho ? (
-                      <Check className="size-4 text-success" />
-                    ) : fallo ? (
-                      <X className="size-4 text-destructive" />
-                    ) : actual ? (
-                      <Loader2 className="size-4 animate-spin text-primary" />
-                    ) : (
-                      <CircleDashed className="size-4 text-muted-foreground" />
-                    )}
-                    <span className={cn(!hecho && !actual && !fallo && "text-muted-foreground", fallo && "text-destructive")}>
-                      {nombrePaso[paso]}
+                  <li key={paso} className="flex items-start gap-3 text-sm">
+                    <span className="mt-0.5 shrink-0">
+                      {hecho ? (
+                        <Check className="size-4 text-success" />
+                      ) : fallo ? (
+                        <X className="size-4 text-destructive" />
+                      ) : actual ? (
+                        <Loader2 className="size-4 animate-spin text-primary motion-reduce:animate-none" />
+                      ) : (
+                        <CircleDashed className="size-4 text-muted-foreground" />
+                      )}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-baseline justify-between gap-3">
+                        <span className={cn(!hecho && !actual && !fallo && "text-muted-foreground", actual && "font-medium", fallo && "text-destructive")}>
+                          {nombrePaso[paso]}
+                        </span>
+                        {actual && inicioPaso.current.desde > 0 && (
+                          <span className="shrink-0 font-mono text-xs text-muted-foreground">{duracion(ahora - inicioPaso.current.desde)}</span>
+                        )}
+                      </span>
+                      {actual && notaPaso[paso] && <span className="mt-0.5 block text-xs text-muted-foreground">{notaPaso[paso]}</span>}
                     </span>
                   </li>
                 );
@@ -177,12 +222,21 @@ export function ProveedorActualizacion({ children }: { children: React.ReactNode
             )}
             {!terminada && !sinRespuesta && (
               <p className="text-sm text-muted-foreground">
-                Puede tardar unos minutos. FreeRADIUS sigue autenticando mientras tanto, salvo un par de segundos si
-                tiene que reiniciarse.
+                {inicioTotal.current !== null && (
+                  <>
+                    Lleva <span className="font-mono text-foreground">{duracion(ahora - inicioTotal.current)}</span>; en total suele tardar entre 3 y
+                    6 minutos.{" "}
+                  </>
+                )}
+                FreeRADIUS sigue autenticando mientras tanto, salvo un par de segundos si tiene que reiniciarse. Puedes ocultar esta ventana: la
+                actualización sigue igual.
               </p>
             )}
             {terminada && pv?.mensaje && (
-              <p className={cn("rounded-md border p-3 text-sm", pv.estado === "ok" ? "border-success/40" : "border-destructive/50")}>{pv.mensaje}</p>
+              <p className={cn("rounded-md border p-3 text-sm", pv.estado === "ok" ? "border-success/40" : "border-destructive/50")}>
+                {pv.mensaje}
+                {duro !== null && duro > 0 && <span className="mt-1 block text-xs text-muted-foreground">Tardó {duracion(duro)}.</span>}
+              </p>
             )}
             <DialogFooter>
               {terminada && pv?.estado === "ok" ? (
