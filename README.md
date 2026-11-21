@@ -62,6 +62,9 @@ En todas las tablas:
     des en ese router (`full`, `write`, `read` u otro grupo).
 - **Cambios masivos**: dar o quitar acceso a varios usuarios, o cambiar el modo, en todos
   los routers, en los de una empresa o en una selección.
+- **Exigir Message-Authenticator** (marcado por omisión): FreeRADIUS solo acepta las
+  peticiones de ese router si vienen firmadas con su secreto. Un router que lo tiene
+  desmarcado se señala en la tabla con «Sin Message-Authenticator».
 - Buscador por nombre, empresa o red; filtros por empresa, tipo de acceso y estado; y orden
   por cualquier columna.
 
@@ -195,6 +198,19 @@ RED_GESTION=192.0.2.0/24 ./instalar.sh
 
 Deja siempre una cuenta local en el router: si el servidor RADIUS no responde, es la única
 forma de entrar.
+
+### Message-Authenticator
+
+Es la firma que un router añade a cada petición RADIUS, calculada con el secreto
+compartido. Exigirla impide que alguien situado entre el router y el servidor falsifique o
+altere un login (la vulnerabilidad conocida como BlastRADIUS, de 2024). Las versiones
+actuales de RouterOS la envían.
+
+Si un router tiene el secreto correcto y aun así nadie puede entrar, y sus intentos ni
+siquiera aparecen en Autenticaciones, es probable que su RouterOS no envíe la firma. Lo
+correcto es actualizar el router. Desmarcar «Exigir Message-Authenticator» en ese router
+lo deja funcionar sin la firma, pero también sin esa protección: úsalo solo como último
+recurso.
 
 ## Qué se instala
 
