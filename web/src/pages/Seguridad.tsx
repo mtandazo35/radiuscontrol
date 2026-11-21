@@ -48,6 +48,7 @@ const nombreAccion: Record<string, string> = {
   "usuario.editado": "Usuario MikroTik editado",
   "usuario.eliminado": "Usuario MikroTik eliminado",
   "usuario.clave_cambiada": "Contraseña de usuario MikroTik cambiada",
+  "usuario.clave_vista": "Contraseña de usuario MikroTik consultada",
   "accesos.cambio_masivo": "Cambio masivo de accesos",
   "config.aplicada": "Configuración aplicada",
   "config.rechazada": "Configuración rechazada por FreeRADIUS",

@@ -94,14 +94,50 @@ func (a *App) listarUsuarios(w http.ResponseWriter, r *http.Request, _ *Operador
 }
 
 // prepararClave devuelve el hash NT cifrado. La contraseña en claro no se guarda.
-func (a *App) prepararClave(clave string) (cifrado []byte, usada string, generada bool, err error) {
+// prepararClave devuelve el hash NT cifrado (lo que usa FreeRADIUS) y la propia
+// contraseña cifrada (lo que el panel enseña a un administrador que la pide).
+func (a *App) prepararClave(clave string) (cifrado, claveCifrada []byte, usada string, generada bool, err error) {
 	if clave == "" {
 		clave, generada = aleatorioHex(12), true
 	} else if err = validarClaveUsuario(clave); err != nil {
-		return nil, "", false, err
+		return nil, nil, "", false, err
 	}
-	cifrado, err = a.cifra.Cifrar([]byte(hashNT(clave)), dominioHashNT)
-	return cifrado, clave, generada, err
+	if cifrado, err = a.cifra.Cifrar([]byte(hashNT(clave)), dominioHashNT); err != nil {
+		return nil, nil, "", false, err
+	}
+	claveCifrada, err = a.cifra.Cifrar([]byte(clave), dominioClave)
+	return cifrado, claveCifrada, clave, generada, err
+}
+
+// verClaveUsuario devuelve la contraseña de un usuario MikroTik a un
+// administrador. Cada consulta queda en el registro de actividad. Un usuario
+// creado antes de que la contraseña se guardara cifrada no la tiene.
+func (a *App) verClaveUsuario(w http.ResponseWriter, r *http.Request, op *Operador) error {
+	id, err := idRuta(r)
+	if err != nil {
+		return err
+	}
+	ctx := r.Context()
+	var usuario string
+	var cifrada []byte
+	err = a.db.QueryRow(ctx, `SELECT usuario, clave_cifrada FROM usuarios_mikrotik WHERE id = $1`, id).Scan(&usuario, &cifrada)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return noEncontrado()
+	}
+	if err != nil {
+		return err
+	}
+	if cifrada == nil {
+		escribirJSON(w, http.StatusOK, map[string]any{"disponible": false, "clave": ""})
+		return nil
+	}
+	claro, err := a.cifra.Descifrar(cifrada, dominioClave)
+	if err != nil {
+		return err
+	}
+	a.auditar(ctx, op.Usuario, ipCliente(r), "usuario.clave_vista", usuario, nil)
+	escribirJSON(w, http.StatusOK, map[string]any{"disponible": true, "clave": string(claro)})
+	return nil
 }
 
 func (a *App) crearUsuario(w http.ResponseWriter, r *http.Request, op *Operador) error {
@@ -121,15 +157,15 @@ func (a *App) crearUsuario(w http.ResponseWriter, r *http.Request, op *Operador)
 	if len(in.NombreCompleto) > 120 {
 		return malo("El nombre completo es demasiado largo.")
 	}
-	cifrado, clave, generada, err := a.prepararClave(in.Clave)
+	cifrado, claveCifrada, clave, generada, err := a.prepararClave(in.Clave)
 	if err != nil {
 		return err
 	}
 	activo := in.Activo == nil || *in.Activo
 	u, err := leerUsuario(a.db.QueryRow(r.Context(), `INSERT INTO usuarios_mikrotik
-		(usuario, nombre_completo, grupo, activo, hash_nt_cifrado)
-		VALUES ($1, $2, $3, $4, $5) RETURNING `+columnasUsuario,
-		in.Usuario, in.NombreCompleto, in.Grupo, activo, cifrado))
+		(usuario, nombre_completo, grupo, activo, hash_nt_cifrado, clave_cifrada)
+		VALUES ($1, $2, $3, $4, $5, $6) RETURNING `+columnasUsuario,
+		in.Usuario, in.NombreCompleto, in.Grupo, activo, cifrado, claveCifrada))
 	if err != nil {
 		if errorPG(err, "23505") {
 			return conflicto("Ya existe un usuario con ese nombre.")
@@ -212,13 +248,13 @@ func (a *App) cambiarClaveUsuario(w http.ResponseWriter, r *http.Request, op *Op
 	if err := leerJSON(w, r, &in); err != nil {
 		return err
 	}
-	cifrado, clave, generada, err := a.prepararClave(in.Clave)
+	cifrado, claveCifrada, clave, generada, err := a.prepararClave(in.Clave)
 	if err != nil {
 		return err
 	}
 	u, err := leerUsuario(a.db.QueryRow(r.Context(), `UPDATE usuarios_mikrotik
-		SET hash_nt_cifrado = $2, clave_cambiada = now(), actualizado = now()
-		WHERE id = $1 RETURNING `+columnasUsuario, id, cifrado))
+		SET hash_nt_cifrado = $2, clave_cifrada = $3, clave_cambiada = now(), actualizado = now()
+		WHERE id = $1 RETURNING `+columnasUsuario, id, cifrado, claveCifrada))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return noEncontrado()
 	}

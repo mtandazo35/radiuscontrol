@@ -24,6 +24,7 @@ import (
 const (
 	dominioSecreto = "radius-secreto"
 	dominioHashNT  = "mikrotik-hash-nt"
+	dominioClave   = "mikrotik-clave"
 	dominioVersion = "config-version"
 )
 

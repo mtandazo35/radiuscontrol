@@ -209,6 +209,15 @@ comprobar "Usuario: alta con contraseña generada, 201" "$(codigo_es 201; echo $
 USUARIO_ID="$(printf '%s' "$CUERPO" | jq -r '.usuario.id')"
 CLAVE="$(printf '%s' "$CUERPO" | jq -r '.clave_generada')"
 OCULTAR+=("$CLAVE")
+api GET "/api/usuarios/$USUARIO_ID/clave"
+comprobar "Usuario: un administrador puede consultar la contraseña en uso, 200" \
+    "$(codigo_es 200 && printf '%s' "$CUERPO" | jq -e --arg c "$CLAVE" '.disponible == true and .clave == $c' >/dev/null; echo $?)"
+api GET /api/usuarios
+comprobar "Usuario: el listado no devuelve la contraseña" \
+    "$(printf '%s' "$CUERPO" | grep -q -e "$CLAVE" -e clave_cifrada; [ $? -ne 0 ]; echo $?)"
+api GET "/api/auditoria?buscar=usuario.clave_vista&tamano=5"
+comprobar "Usuario: consultar la contraseña queda en el registro de actividad" \
+    "$(printf '%s' "$CUERPO" | jq -e --arg u "$USUARIO_PRUEBA" 'any(.eventos[]; .accion == "usuario.clave_vista" and .objeto == $u)' >/dev/null; echo $?)"
 HASH_NT="$(printf '%s' "$CLAVE" | iconv -f UTF-8 -t UTF-16LE | openssl dgst -md4 -provider legacy -provider default -r | awk '{print toupper($1)}')"
 OCULTAR+=("$HASH_NT")
 

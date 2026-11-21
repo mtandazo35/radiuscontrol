@@ -1,6 +1,6 @@
 import { Eye, EyeOff, Plus } from "lucide-react";
 import * as React from "react";
-import { Badge, Button, Card, Dialog, DialogContent, DialogFooter, EstadoVacio, Input, Label, Select, Table, Td, Th, ThOrden, comparar, useOrden } from "@/components/ui";
+import { Badge, Button, Card, Copiable, Dialog, DialogContent, DialogFooter, EstadoVacio, Input, Label, Select, Table, Td, Th, ThOrden, comparar, useOrden } from "@/components/ui";
 import { api, type RespuestaUsuario, type Usuario } from "@/lib/api";
 import { fecha } from "@/lib/utils";
 import { useApp } from "../contexto";
@@ -18,7 +18,19 @@ const vacio: Formulario = { id: null, usuario: "", nombre: "", grupo: "full", cl
 const gruposBase = ["full", "write", "read"];
 
 // Campo de contraseña con un botón para verla mientras se escribe.
-function CampoClave({ id, valor, onValor, enfocar }: { id: string; valor: string; onValor: (v: string) => void; enfocar?: boolean }) {
+function CampoClave({
+  id,
+  valor,
+  onValor,
+  enfocar,
+  vacio = "Vacío: se genera una aleatoria",
+}: {
+  id: string;
+  valor: string;
+  onValor: (v: string) => void;
+  enfocar?: boolean;
+  vacio?: string;
+}) {
   const [ver, setVer] = React.useState(false);
   return (
     <div className="relative">
@@ -28,7 +40,7 @@ function CampoClave({ id, valor, onValor, enfocar }: { id: string; valor: string
         type={ver ? "text" : "password"}
         autoComplete="new-password"
         autoFocus={enfocar}
-        placeholder="Vacío: se genera una aleatoria"
+        placeholder={vacio}
         value={valor}
         onChange={(e) => onValor(e.target.value)}
       />
@@ -52,6 +64,27 @@ export default function Usuarios() {
   const [ocupado, setOcupado] = React.useState(false);
   const [otroGrupo, setOtroGrupo] = React.useState(false);
   const [cambio, setCambio] = React.useState<{ usuario: Usuario; clave: string } | null>(null);
+  // Contraseña en uso del usuario que se está editando: solo se pide al pulsar «Ver».
+  // null = oculta; "" = el usuario es anterior a que se guardara y no se puede recuperar.
+  const [claveActual, setClaveActual] = React.useState<string | null>(null);
+  const [pidiendoClave, setPidiendoClave] = React.useState(false);
+  const formId = form?.id ?? null;
+  React.useEffect(() => {
+    setClaveActual(null);
+  }, [formId]);
+
+  const verClave = async () => {
+    if (formId === null) return;
+    setPidiendoClave(true);
+    try {
+      const r = await api<{ disponible: boolean; clave: string }>("GET", `/usuarios/${formId}/clave`);
+      setClaveActual(r.disponible ? r.clave : "");
+    } catch (e) {
+      avisarError(e);
+    } finally {
+      setPidiendoClave(false);
+    }
+  };
 
   const [buscar, setBuscar] = React.useState("");
   const [fGrupo, setFGrupo] = React.useState("");
@@ -92,17 +125,16 @@ export default function Usuarios() {
     await refrescarEstado();
   };
 
-  // La contraseña se enseña una vez al terminar, tanto si la generó el sistema
-  // como si la escribió el operador (esa sale de lo que acaba de teclear: el
-  // servidor solo guarda su hash y no puede devolverla).
+  // La contraseña se enseña al terminar, tanto si la generó el sistema como si
+  // la escribió el operador. Después se puede consultar al editar el usuario.
   const mostrarClave = (r: RespuestaUsuario, titulo: string, escrita: string) => {
     const clave = r.clave_generada || escrita;
     if (!clave) return;
     avisar({
       titulo,
       mensaje: r.clave_generada
-        ? "Contraseña generada por el sistema. Se muestra una sola vez: cópiala y entrégala a la persona. El cambio se aplica solo en unos segundos."
-        : "Esta es la contraseña que escribiste. Se muestra una sola vez: después no se puede consultar, porque solo se guarda su hash. El cambio se aplica solo en unos segundos.",
+        ? "Contraseña generada por el sistema. Cópiala y entrégala a la persona. El cambio se aplica solo en unos segundos."
+        : "Esta es la contraseña que escribiste. El cambio se aplica solo en unos segundos.",
       copiable: clave,
     });
   };
@@ -127,11 +159,13 @@ export default function Usuarios() {
           grupo: form.grupo,
           activo: form.activo,
         });
+        // Al editar, una contraseña escrita sustituye a la que había.
+        if (form.clave) await api<RespuestaUsuario>("POST", `/usuarios/${form.id}/clave`, { clave: form.clave });
       }
-      const escrita = form.id === null ? form.clave : "";
+      const escrita = form.clave;
       setForm(null);
       await tras();
-      mostrarClave(r, `Usuario «${r.usuario.usuario}» creado`, escrita);
+      mostrarClave(r, form.id === null ? `Usuario «${r.usuario.usuario}» creado` : `Contraseña nueva de «${r.usuario.usuario}»`, escrita);
     } catch (err) {
       avisarError(err);
     } finally {
@@ -341,14 +375,49 @@ export default function Usuarios() {
                   full, write y read vienen de fábrica en RouterOS. Un grupo propio debe existir en cada router.
                 </p>
               </div>
-              {form.id === null && (
+              {form.id === null ? (
                 <div className="space-y-2">
                   <Label htmlFor="clave">Contraseña</Label>
                   <CampoClave id="clave" valor={form.clave} onValor={(v) => setForm({ ...form, clave: v })} />
-                  <p className="text-xs text-muted-foreground">
-                    Mínimo 8 caracteres. Al guardar se te muestra una vez para que la copies; después solo queda su hash, cifrado.
-                  </p>
+                  <p className="text-xs text-muted-foreground">Mínimo 8 caracteres. Después se puede consultar y cambiar al editar el usuario.</p>
                 </div>
+              ) : (
+                <>
+                  <div className="space-y-2">
+                    <Label>Contraseña en uso</Label>
+                    <div className="flex h-9 items-center justify-between gap-2 rounded-md border border-input bg-muted/40 px-3">
+                      {claveActual === null ? (
+                        <span className="font-mono text-sm tracking-widest text-muted-foreground" aria-hidden="true">
+                          ••••••••••••
+                        </span>
+                      ) : claveActual === "" ? (
+                        <span className="text-sm text-muted-foreground">No se puede recuperar</span>
+                      ) : (
+                        <Copiable texto={claveActual} className="min-w-0 text-sm" />
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => (claveActual === null ? void verClave() : setClaveActual(null))}
+                        disabled={pidiendoClave}
+                        aria-label={claveActual === null ? "Ver la contraseña en uso" : "Ocultar la contraseña"}
+                        title={claveActual === null ? "Ver la contraseña en uso" : "Ocultar la contraseña"}
+                        className="-mr-2 flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                      >
+                        {claveActual === null ? <Eye className="size-4" aria-hidden="true" /> : <EyeOff className="size-4" aria-hidden="true" />}
+                      </button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {claveActual === ""
+                        ? "Esta contraseña se puso antes de que el panel las guardara para consultarlas. Escribe una nueva abajo y a partir de ahí se podrá ver."
+                        : "Verla queda anotado en el registro de actividad."}
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="clave">Contraseña nueva</Label>
+                    <CampoClave id="clave" vacio="Vacío: se conserva la actual" valor={form.clave} onValor={(v) => setForm({ ...form, clave: v })} />
+                    <p className="text-xs text-muted-foreground">Mínimo 8 caracteres. Si escribes una, sustituye a la actual al guardar.</p>
+                  </div>
+                </>
               )}
               <DialogFooter>
                 <Button variant="outline" onClick={() => setForm(null)}>

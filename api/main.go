@@ -355,6 +355,7 @@ func (a *App) rutas() http.Handler {
 	m.HandleFunc("POST /api/usuarios", cambia(a.crearUsuario))
 	m.HandleFunc("PUT /api/usuarios/{id}", cambia(a.editarUsuario))
 	m.HandleFunc("DELETE /api/usuarios/{id}", cambia(a.borrarUsuario))
+	m.HandleFunc("GET /api/usuarios/{id}/clave", a.admin(a.verClaveUsuario))
 	m.HandleFunc("POST /api/usuarios/{id}/clave", cambia(a.cambiarClaveUsuario))
 
 	m.HandleFunc("GET /api/estado", a.privado(a.verEstado))

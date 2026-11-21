@@ -58,8 +58,9 @@ Autenticaciones, y un botón para volver a pedir los datos.
 
 - Las personas que entran a los routers. Cada una tiene su grupo general.
 - Alta, suspensión, baja y restablecimiento de contraseña.
-- La contraseña la escribes tú o la genera el sistema. Al guardar se muestra una sola vez
-  para copiarla; después no se puede consultar, porque solo se guarda su hash.
+- La contraseña la escribes tú o la genera el sistema. Al editar un usuario, un
+  administrador puede ver la contraseña en uso y escribir una nueva. Cada consulta queda
+  en el registro de actividad.
 - Buscador por usuario o nombre, filtros por grupo y estado, y orden por cualquier columna.
 
 ### Autenticaciones
@@ -99,13 +100,17 @@ Autenticaciones, y un botón para volver a pedir los datos.
 | Credencial | Cómo se guarda |
 |---|---|
 | Contraseñas del panel | Hash Argon2id |
-| Contraseñas de usuarios MikroTik | Solo el hash NT, cifrado con AES-256-GCM |
+| Contraseñas de usuarios MikroTik | El hash NT (lo que usa FreeRADIUS) y la propia contraseña (para consultarla desde el panel), ambos cifrados con AES-256-GCM |
 | Secretos RADIUS de los routers | Cifrados con AES-256-GCM |
 | Secreto de la verificación en dos pasos | Cifrado con AES-256-GCM |
 
 La clave de cifrado vive fuera de la base de datos, en `despliegue/secrets/`. Un volcado
 de la base sin esa clave no contiene nada utilizable. Los secretos RADIUS no se pueden
 guardar como hash porque el protocolo necesita su valor original.
+
+Las contraseñas de los usuarios MikroTik son recuperables por decisión de diseño, para
+poder consultarlas desde el panel: quien tenga a la vez la base y la clave de cifrado
+puede leerlas. Las contraseñas de los operadores del panel no: de esas solo existe su hash.
 
 En el repositorio no hay ninguna contraseña ni clave: los secretos se generan al instalar,
 en `despliegue/secrets/`, que queda fuera de git. El archivo `despliegue/.env` solo lleva
