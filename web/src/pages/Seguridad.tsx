@@ -368,8 +368,10 @@ function Sesiones() {
               <Td className="whitespace-nowrap text-muted-foreground">{fecha(s.ultima_actividad)}</Td>
               <Td className="whitespace-nowrap text-muted-foreground">{fecha(s.expira)}</Td>
               <Td>
-                <div className="flex items-center justify-center gap-2">
-                  {s.actual && <Badge>Esta sesión</Badge>}
+                {/* El hueco de la píldora existe en todas las filas: así el botón
+                    queda en el mismo sitio tenga o no «Esta sesión» al lado. */}
+                <div className="grid grid-cols-[6.5rem_auto] items-center justify-center gap-2">
+                  <span className="flex justify-end">{s.actual && <Badge>Esta sesión</Badge>}</span>
                   <Button size="sm" variant="outline" onClick={() => (s.actual ? cerrarLaMia() : cerrar(s))}>
                     Cerrar sesión
                   </Button>
