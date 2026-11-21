@@ -92,7 +92,6 @@ En todas las tablas:
 
 ### Configuración
 
-- **Versión**: versión instalada, búsqueda de actualizaciones e instalación desde el panel.
 - **Accesos al servidor**: quién puede llegar a la web del panel (443) y al SSH, gestionado
   de forma gráfica. Las reglas cargadas a mano en el servidor se muestran y no se tocan.
 - **Orígenes con nombre**: la lista de direcciones y redes con su descripción. Si una
@@ -101,6 +100,15 @@ En todas las tablas:
   que el firewall deja pasar, con sus huellas para comprobar que coinciden.
 - **Limpieza de registros**: conservación configurable, limpieza programada, limpieza de
   emergencia por disco lleno y vaciado a petición.
+
+### Actualización
+
+- Apartado propio en el menú, solo para administradores. Muestra la versión instalada, los
+  cambios publicados en el repositorio que todavía no están instalados y el resultado de
+  la última actualización.
+- «Buscar actualizaciones» comprueba en el momento si hay cambios nuevos; «Actualizar
+  ahora» los instala y muestra el avance paso a paso.
+- Cuando hay cambios por instalar, el menú lo avisa con su número junto a «Actualización».
 
 ### Seguridad
 
@@ -235,8 +243,9 @@ atiende por HTTPS; el puerto 80 no escucha.
 ## Actualizaciones
 
 El servidor busca cada 30 minutos si hay cambios nuevos en este repositorio. Cuando los
-hay, el panel lo avisa en el menú de usuario. Nunca se instalan solas: las lanza un
-administrador con «Actualizar ahora». El proceso:
+hay, el panel lo avisa en el menú, junto a «Actualización», y en el menú de usuario. Nunca
+se instalan solas: las lanza un administrador desde el apartado Actualización con
+«Actualizar ahora». El proceso:
 
 1. Comprueba que la versión es la última publicada y posterior a la instalada.
 2. Guarda y verifica un respaldo de la base, los secretos y el entorno en `/root/backups/`.
