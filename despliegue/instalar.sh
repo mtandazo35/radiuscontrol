@@ -116,8 +116,11 @@ if [ -n "${RESTAURAR:-}" ]; then
     echo "== 5a. Restauración desde $RESTAURAR"
     sql() { docker compose exec -T postgres psql -U radiuscontrol -d radiuscontrol -At -v ON_ERROR_STOP=1 "$@"; }
     docker compose up -d postgres
-    for _ in $(seq 1 60); do
-        docker compose exec -T postgres pg_isready -U radiuscontrol -d radiuscontrol >/dev/null 2>&1 && break
+    # Por TCP y no por el socket: en una base recién creada, PostgreSQL arranca
+    # antes un servidor temporal solo con socket para inicializarla, y luego se
+    # reinicia. Por TCP solo responde el definitivo.
+    for _ in $(seq 1 90); do
+        docker compose exec -T postgres pg_isready -h 127.0.0.1 -U radiuscontrol -d radiuscontrol >/dev/null 2>&1 && break
         sleep 1
     done
     TABLAS="$(sql -c "SELECT count(*) FROM pg_tables WHERE schemaname = 'public'")"

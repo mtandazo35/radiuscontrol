@@ -76,6 +76,10 @@ TypeScript + Tailwind (`web/`) y el despliegue con Docker Compose (`despliegue/`
   se queda como está.
 - **Antigravity sin interfaz:** cualquier comando de terminal se deniega y anula la respuesta entera. Lee y escribe solo con
   las herramientas de archivos.
+- **PostgreSQL recién creado se reinicia una vez.** Con un volumen vacío, la imagen oficial levanta un servidor temporal
+  solo con socket para inicializar la base y luego lo reinicia. `pg_isready` por el socket da por bueno el temporal y la
+  consulta siguiente falla. Para esperar a la base en un script, `pg_isready -h 127.0.0.1` (por TCP solo responde el
+  definitivo).
 
 ## 7. Trabajo completo en un turno
 
