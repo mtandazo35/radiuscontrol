@@ -1,6 +1,7 @@
 import * as React from "react";
 import { AccesoServidor } from "@/components/AccesoServidor";
 import { Limpieza } from "@/components/Limpieza";
+import { Migracion } from "@/components/Migracion";
 import { Badge, Card } from "@/components/ui";
 import { fecha, huellaCorta } from "@/lib/utils";
 import { Origenes } from "@/components/Origenes";
@@ -155,6 +156,7 @@ export default function Configuracion() {
         <section className="space-y-3">
           <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Mantenimiento y retención</h2>
           <Limpieza />
+          <Migracion />
         </section>
       )}
     </div>

@@ -126,6 +126,9 @@ En todas las tablas:
   que el firewall deja pasar, con sus huellas para comprobar que coinciden.
 - **Limpieza de registros**: conservación configurable, limpieza programada, limpieza de
   emergencia por disco lleno y vaciado a petición.
+- **Migrar a otro servidor**: «Descargar base de datos» baja un archivo cifrado con toda la
+  base, para instalar RadiusControl en otro servidor con los mismos datos. Ver
+  [Migrar a otro servidor](#migrar-a-otro-servidor).
 
 ### Actualización
 
@@ -303,6 +306,48 @@ se instalan solas: las lanza un administrador desde el apartado Actualización c
 5. Si algo no responde, vuelve sola a la versión anterior.
 
 Se conservan los cinco últimos respaldos.
+
+## Migrar a otro servidor
+
+Para llevar RadiusControl a otro servidor con todo lo que tiene: routers, usuarios,
+empresas, operadores con sus contraseñas y doble factor, ajustes, orígenes, actividad e
+historial de autenticaciones.
+
+1. **En el servidor actual**, en Configuración, «Descargar base de datos». Pide tu
+   contraseña y una frase de al menos 12 caracteres. Descarga
+   `radiuscontrol-migracion-AAAAMMDD-HHMM.rcm`.
+2. **Sube el archivo al servidor nuevo**, a `/root`:
+   `scp radiuscontrol-migracion-….rcm root@servidor-nuevo:/root/`
+3. **Instala indicando el archivo**:
+
+   ```
+   curl -fsSL https://raw.githubusercontent.com/mtandazo35/radiuscontrol/main/install.sh -o /root/install-radiuscontrol.sh
+   RESTAURAR=/root/radiuscontrol-migracion-….rcm bash /root/install-radiuscontrol.sh
+   ```
+
+   Pide la frase, restaura la base y arranca. No hay contraseña inicial: se entra con los
+   mismos usuarios del servidor anterior.
+4. **Abre el panel y el 1812** como en cualquier instalación (ver «Firewall»). Las redes de
+   los routers ya están dadas de alta, así que el agente abre el 1812 solo.
+5. **En cada router**, cambia la dirección del servidor RADIUS a la del servidor nuevo. El
+   secreto es el mismo. Hasta que lo cambies, el router sigue usando el servidor anterior,
+   así que puedes hacerlo de uno en uno.
+6. **Borra el archivo** `.rcm` de tu equipo y del servidor nuevo cuando termines.
+
+Por qué el archivo va cifrado: los secretos de los routers y las contraseñas de los
+usuarios se guardan cifrados con una clave maestra propia de cada instalación. Sin esa
+clave, una copia de la base no sirve en otro servidor, así que el archivo la lleva
+dentro. Por eso se protege con la frase (Argon2id y AES-256-GCM): quien tenga el archivo
+sin la frase no puede leer nada. La descarga queda en la actividad del panel.
+
+Condiciones:
+
+- El servidor nuevo debe estar vacío. Si ya tiene datos, el instalador se detiene. Con
+  `REEMPLAZAR_BASE=si` los sustituye, después de guardar un respaldo en `/root/backups/`.
+- La versión del servidor nuevo debe ser igual o más nueva que la del archivo. Si el
+  archivo viene de una versión más nueva, el instalador lo indica: actualiza primero.
+- Para instalar sin preguntas, la frase puede ir en `RESTAURAR_FRASE`. Ten en cuenta que
+  queda en el historial del shell.
 
 ## Operación
 

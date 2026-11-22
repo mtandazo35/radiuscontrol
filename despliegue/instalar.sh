@@ -7,6 +7,11 @@
 #   RED_GESTION   red que puede abrir el panel; solo si se indica se abre el 443.
 #                 Sin ella, el operador abre el panel con su propia regla.
 #   SERVICIOS     servicios de Compose a levantar (por omisión, todos)
+#   RESTAURAR     archivo de migración (.rcm) descargado del panel de otro
+#                 servidor: instala con sus datos, operadores y clave maestra.
+#                 Pide la frase con la que se descargó (o RESTAURAR_FRASE).
+#                 Solo en una base vacía; con REEMPLAZAR_BASE=si sustituye la
+#                 que haya, tras guardar un respaldo en /root/backups.
 #
 # Es idempotente: no regenera secretos ni credenciales que ya existan.
 set -euo pipefail
@@ -90,11 +95,105 @@ else
     echo "no hay laboratorio anterior"
 fi
 
+RESTAURADO=0
+if [ -n "${RESTAURAR:-}" ]; then
+    if [ ! -f "$RESTAURAR" ]; then
+        echo "RESTAURAR: no existe el archivo $RESTAURAR" >&2
+        exit 1
+    fi
+    RESTAURAR="$(cd "$(dirname "$RESTAURAR")" && pwd)/$(basename "$RESTAURAR")"
+    if [ -n "${SERVICIOS:-}" ]; then
+        echo "RESTAURAR no se combina con SERVICIOS: la restauración levanta todo." >&2
+        exit 1
+    fi
+fi
+
 echo "== 5. Construcción y arranque"
 # shellcheck disable=SC2086
 docker compose build ${SERVICIOS:-}
+
+if [ -n "${RESTAURAR:-}" ]; then
+    echo "== 5a. Restauración desde $RESTAURAR"
+    sql() { docker compose exec -T postgres psql -U radiuscontrol -d radiuscontrol -At -v ON_ERROR_STOP=1 "$@"; }
+    docker compose up -d postgres
+    for _ in $(seq 1 60); do
+        docker compose exec -T postgres pg_isready -U radiuscontrol -d radiuscontrol >/dev/null 2>&1 && break
+        sleep 1
+    done
+    TABLAS="$(sql -c "SELECT count(*) FROM pg_tables WHERE schemaname = 'public'")"
+    if [ "$TABLAS" != "0" ] && [ "${REEMPLAZAR_BASE:-}" != "si" ]; then
+        echo "Esta instalación ya tiene datos ($TABLAS tablas). La restauración es para un servidor nuevo." >&2
+        echo "Para sustituirlos de todos modos: REEMPLAZAR_BASE=si (se guarda antes un respaldo)." >&2
+        exit 1
+    fi
+
+    if [ -z "${RESTAURAR_FRASE:-}" ]; then
+        read -r -s -p "Frase del archivo de migración: " RESTAURAR_FRASE < /dev/tty
+        echo
+    fi
+    TRABAJO="$(mktemp -d /root/rc-restaurar.XXXXXX)"
+    chmod 700 "$TRABAJO"
+    limpiar_trabajo() { find "$TRABAJO" -type f -exec shred -u {} + 2>/dev/null; rm -rf "$TRABAJO"; }
+    trap limpiar_trabajo EXIT
+    # El binario de la API descifra sin tocar la base; la frase va por la entrada.
+    if ! printf '%s\n' "$RESTAURAR_FRASE" | docker compose run --rm --no-deps -T \
+        -v "$RESTAURAR:/migracion.rcm:ro" api descifrar-migracion /migracion.rcm > "$TRABAJO/migracion.tar.gz"; then
+        echo "No se pudo descifrar: la frase no es correcta o el archivo está dañado." >&2
+        exit 1
+    fi
+    unset RESTAURAR_FRASE
+    tar xzf "$TRABAJO/migracion.tar.gz" -C "$TRABAJO" manifiesto.json clave_maestra base.dump
+    jq -r '"origen: \(.origen)  fecha: \(.fecha)  versión: \(.version[0:7])\nrouters: \(.routers)  usuarios: \(.usuarios)  operadores: \(.operadores)"' "$TRABAJO/manifiesto.json"
+    if [ "$(jq -r .formato "$TRABAJO/manifiesto.json")" != "1" ]; then
+        echo "Formato de archivo de migración desconocido: actualiza este servidor." >&2
+        exit 1
+    fi
+    ULTIMA="$(jq -r .ultima_migracion "$TRABAJO/manifiesto.json")"
+    if [ -n "$ULTIMA" ] && [ ! -f "$DIR/../api/migraciones/$ULTIMA" ]; then
+        echo "El archivo viene de una versión más nueva que esta ($ULTIMA)." >&2
+        echo "Actualiza este repositorio (git pull) y vuelve a ejecutar el instalador." >&2
+        exit 1
+    fi
+
+    if [ "$TABLAS" != "0" ]; then
+        RESPALDO="/root/backups/radiuscontrol-antes-de-restaurar-$(date +%Y%m%d-%H%M%S).tar.gz"
+        mkdir -p /root/backups
+        docker compose stop api
+        ( umask 077
+          docker compose exec -T postgres pg_dump -U radiuscontrol -Fc radiuscontrol > "$TRABAJO/anterior.dump"
+          cp -a "$DIR/secrets" "$TRABAJO/secrets-anteriores"
+          tar czf "$RESPALDO" -C "$TRABAJO" anterior.dump secrets-anteriores )
+        echo "respaldo de lo que había: $RESPALDO"
+        sql -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;" >/dev/null
+    fi
+
+    docker compose exec -T postgres pg_restore -U radiuscontrol -d radiuscontrol --no-owner --exit-on-error \
+        < "$TRABAJO/base.dump"
+    # Las sesiones del otro servidor no valen aquí, y las posiciones de lectura
+    # se refieren a archivos de registro de allí.
+    sql -c "DELETE FROM sesiones; DELETE FROM registro_posicion; DELETE FROM descartes_posicion;" >/dev/null
+    # Por la entrada y no con -c: psql solo sustituye :'variables' así.
+    sql -v origen="$(jq -r .origen "$TRABAJO/manifiesto.json")" \
+        -v detalle="$(jq -c '{origen, fecha, version, routers, usuarios, operadores}' "$TRABAJO/manifiesto.json")" \
+        >/dev/null <<'SQL'
+INSERT INTO auditoria (operador, ip, accion, objeto, detalle)
+VALUES ('instalador', 'local', 'sistema.migracion_restaurada', :'origen', :'detalle'::jsonb);
+SQL
+    ( umask 077; cp "$TRABAJO/clave_maestra" "$DIR/secrets/clave_maestra" )
+    # Los operadores vienen en el archivo: no hace falta contraseña inicial.
+    printf 'consumida\n' > "$DIR/secrets/admin_clave"
+    limpiar_trabajo
+    trap - EXIT
+    RESTAURADO=1
+    echo "base y clave maestra restauradas"
+fi
+
 # shellcheck disable=SC2086
 docker compose up -d ${SERVICIOS:-}
+if [ "$RESTAURADO" -eq 1 ]; then
+    # La API ya pudo arrancar antes con la clave anterior: se reinicia con la restaurada.
+    docker compose restart api >/dev/null
+fi
 sleep 4
 docker compose ps
 
@@ -181,11 +280,17 @@ fi
 
 echo
 echo "Panel:    https://$IP"
-echo "Usuario:  admin"
-if [ -n "$CLAVE_INICIAL" ]; then
+if [ "$RESTAURADO" -eq 1 ]; then
+    echo "Usuarios: los mismos del servidor anterior, con sus contraseñas."
+    echo
+    echo "Falta en cada router: cambiar la dirección del servidor RADIUS a $IP"
+    echo "(el secreto es el mismo). Hasta entonces siguen usando el servidor anterior."
+elif [ -n "$CLAVE_INICIAL" ]; then
+    echo "Usuario:  admin"
     echo "Clave:    $CLAVE_INICIAL"
     echo "          Se muestra solo esta vez. Cámbiala al entrar (Seguridad, Mi cuenta)."
 else
+    echo "Usuario:  admin"
     echo "Clave:    la que definiste en el panel."
 fi
 if [ "$PANEL_ABIERTO" -eq 0 ]; then

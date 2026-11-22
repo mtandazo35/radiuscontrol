@@ -36,6 +36,8 @@ type App struct {
 	autoTimer *time.Timer
 	purgaMu   sync.Mutex
 	accesosMu sync.Mutex
+	// Un archivo de migración a la vez (ver migracion.go).
+	migracionMu sync.Mutex
 	// Solo lo usa el bucle de limpieza: evita repetir el mismo aviso en el log.
 	avisoDiscoAjeno bool
 	senuelo         string
@@ -72,6 +74,12 @@ func leerArchivo(ruta string) (string, error) {
 func main() {
 	log.SetFlags(log.LstdFlags | log.LUTC)
 	ctx := context.Background()
+
+	// Descifrar un archivo de migración no necesita la base: instalar.sh lo
+	// usa antes de que exista, en una instalación nueva.
+	if len(os.Args) > 1 && os.Args[1] == "descifrar-migracion" {
+		os.Exit(comandoDescifrarMigracion(os.Args[2:]))
+	}
 
 	claveBD, err := leerArchivo(env("DB_CLAVE_ARCHIVO", "/run/secrets/postgres_clave"))
 	if err != nil {
@@ -394,6 +402,7 @@ func (a *App) rutas() http.Handler {
 	m.HandleFunc("PUT /api/purga", a.admin(a.guardarPurga))
 	m.HandleFunc("POST /api/purga/ejecutar", a.admin(a.ejecutarPurgaManual))
 	m.HandleFunc("POST /api/purga/vaciar", a.admin(a.vaciarRegistros))
+	m.HandleFunc("POST /api/migracion/exportar", a.admin(a.exportarMigracion))
 
 	// Accesos al servidor: quién llega al panel (443/tcp) y al SSH.
 	m.HandleFunc("GET /api/servidor/accesos", a.admin(a.verAccesosServidor))

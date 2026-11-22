@@ -1327,6 +1327,63 @@ comprobar "Actualización: no se puede pedir una versión que no sea la última 
 comprobar "Actualización: un pedido rechazado no deja nada pendiente para el agente" \
     "$([ ! -e /var/lib/docker/volumes/radiuscontrol_compilado/_data/estado/actualizar-pedido.json ]; echo $?)"
 
+# ---------------------------------------------------------------- migración
+# El archivo de migración lleva la base y la clave maestra, cifrados con una
+# frase. Se comprueba que se descifra con la frase y solo con ella, que la
+# clave es la de este servidor y que el volcado se restaura entero.
+FRASE_MIG="frase de prueba automatica $(openssl rand -hex 4)"
+MIG_DIR="$(mktemp -d /root/rc-prueba-migracion.XXXXXX)"
+ESTADO_VOL=/var/lib/docker/volumes/radiuscontrol_compilado/_data/estado
+api POST /api/migracion/exportar "$(jq -nc --arg f "$FRASE_MIG" '{clave: "no-es-la-clave", frase: $f}')"
+comprobar "Migración: con una contraseña equivocada no se descarga nada, 400" "$(codigo_es 400; echo $?)"
+api POST /api/migracion/exportar "$(jq -nc --arg c "$ADMIN_CLAVE" '{clave: $c, frase: "corta"}')"
+comprobar "Migración: una frase de menos de 12 caracteres se rechaza, 400" "$(codigo_es 400; echo $?)"
+MIG_CODIGO="$(curl -sS -m 90 -X POST "$API/api/migracion/exportar" -H 'X-RC: 1' -H 'Content-Type: application/json' \
+    -H "X-Forwarded-For: $IP_PRUEBA" -H "Cookie: rc_sesion=$COOKIE" -D "$MIG_DIR/cabeceras" -o "$MIG_DIR/archivo.rcm" \
+    --data "$(jq -nc --arg c "$ADMIN_CLAVE" --arg f "$FRASE_MIG" '{clave: $c, frase: $f}')" -w '%{http_code}')"
+comprobar "Migración: se descarga como archivo .rcm y empieza por la marca del formato, 200" \
+    "$([ "$MIG_CODIGO" = 200 ] && [ "$(head -c 8 "$MIG_DIR/archivo.rcm")" = RCMIG001 ] \
+        && grep -qi 'content-disposition: attachment; filename="radiuscontrol-migracion-.*\.rcm"' "$MIG_DIR/cabeceras"; echo $?)" \
+    "código $MIG_CODIGO, $(stat -c %s "$MIG_DIR/archivo.rcm" 2>/dev/null) bytes"
+comprobar "Migración: el archivo no deja ver la clave maestra ni el volcado" \
+    "$(! grep -qaF "$(cat "$DIR/secrets/clave_maestra")" "$MIG_DIR/archivo.rcm" && ! grep -qa PGDMP "$MIG_DIR/archivo.rcm"; echo $?)"
+docker cp "$MIG_DIR/archivo.rcm" radiuscontrol-api:/tmp/prueba.rcm
+printf '%s\n' "otra frase que no es" | docker exec -i radiuscontrol-api radiuscontrol descifrar-migracion /tmp/prueba.rcm \
+    > "$MIG_DIR/malo.tar.gz" 2>"$MIG_DIR/malo.err"
+comprobar "Migración: con otra frase no se descifra" \
+    "$([ ! -s "$MIG_DIR/malo.tar.gz" ] && grep -q 'frase no es correcta' "$MIG_DIR/malo.err"; echo $?)" "$(cat "$MIG_DIR/malo.err")"
+printf '%s\n' "$FRASE_MIG" | docker exec -i radiuscontrol-api radiuscontrol descifrar-migracion /tmp/prueba.rcm > "$MIG_DIR/bueno.tar.gz"
+docker exec radiuscontrol-api rm -f /tmp/prueba.rcm
+tar xzf "$MIG_DIR/bueno.tar.gz" -C "$MIG_DIR" 2>/dev/null
+comprobar "Migración: con la frase se descifra y trae manifiesto, clave maestra y volcado" \
+    "$([ -s "$MIG_DIR/manifiesto.json" ] && [ -s "$MIG_DIR/clave_maestra" ] && [ -s "$MIG_DIR/base.dump" ]; echo $?)" \
+    "$(tar tzf "$MIG_DIR/bueno.tar.gz" 2>&1 | tr '\n' ' ')"
+comprobar "Migración: la clave maestra del archivo es la de este servidor" \
+    "$(cmp -s <(tr -d '\n' < "$MIG_DIR/clave_maestra") <(tr -d '\n' < "$DIR/secrets/clave_maestra"); echo $?)"
+comprobar "Migración: el manifiesto cuenta los routers y usuarios de la base y nombra la última migración" \
+    "$(jq -e --argjson r "$(sql 'SELECT count(*) FROM routers')" --argjson u "$(sql 'SELECT count(*) FROM usuarios_mikrotik')" \
+        --arg m "$(sql 'SELECT max(nombre) FROM migraciones_aplicadas')" \
+        '.formato == 1 and .routers == $r and .usuarios == $u and .ultima_migracion == $m' "$MIG_DIR/manifiesto.json" >/dev/null; echo $?)" \
+    "$(jq -c . "$MIG_DIR/manifiesto.json")"
+# El volcado se restaura en una base aparte, que se borra al terminar.
+docker compose exec -T postgres dropdb -U radiuscontrol --if-exists rc_prueba_migracion
+docker compose exec -T postgres createdb -U radiuscontrol rc_prueba_migracion
+docker compose exec -T postgres pg_restore -U radiuscontrol -d rc_prueba_migracion --no-owner --exit-on-error < "$MIG_DIR/base.dump" \
+    > "$MIG_DIR/restaurar.err" 2>&1
+MIG_RESTAURADA="$?"
+MIG_ROUTERS="$(docker compose exec -T postgres psql -U radiuscontrol -d rc_prueba_migracion -At -c 'SELECT count(*) FROM routers' 2>/dev/null)"
+MIG_SECRETOS="$(docker compose exec -T postgres psql -U radiuscontrol -d rc_prueba_migracion -At -c "SELECT md5(string_agg(encode(secreto_cifrado, 'hex'), ',' ORDER BY id)) FROM routers" 2>/dev/null)"
+docker compose exec -T postgres dropdb -U radiuscontrol --if-exists rc_prueba_migracion
+comprobar "Migración: el volcado se restaura sin errores en una base vacía, con los mismos routers y secretos" \
+    "$([ "$MIG_RESTAURADA" = 0 ] && [ "$MIG_ROUTERS" = "$(sql 'SELECT count(*) FROM routers')" ] \
+        && [ "$MIG_SECRETOS" = "$(sql "SELECT md5(string_agg(encode(secreto_cifrado, 'hex'), ',' ORDER BY id)) FROM routers")" ]; echo $?)" \
+    "$(tail -3 "$MIG_DIR/restaurar.err")"
+comprobar "Migración: la descarga queda en la actividad y no deja el volcado en el servidor" \
+    "$([ "$(sql "SELECT count(*) FROM auditoria WHERE accion = 'sistema.migracion_descargada' AND operador = '$ADMIN_PRUEBA' AND fecha > now() - interval '5 minutes'")" -ge 1 ] \
+        && [ -z "$(find "$ESTADO_VOL" -maxdepth 1 -name 'migracion-*' -print -quit)" ]; echo $?)"
+find "$MIG_DIR" -type f -exec shred -u {} +
+rm -rf "$MIG_DIR"
+
 api GET "/api/auditoria?tamano=5&pagina=1"
 P1="$CUERPO"
 api GET "/api/auditoria?tamano=5&pagina=2"

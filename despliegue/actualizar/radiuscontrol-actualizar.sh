@@ -20,6 +20,7 @@ BUSQUEDA="$ESTADO/actualizacion.json"
 PROCESO="$ESTADO/actualizacion-proceso.json"
 PEDIDO="$ESTADO/actualizar-pedido.json"
 PIDE_BUSCAR="$ESTADO/actualizar-buscar"
+PIDE_MIGRACION="$ESTADO/migracion-pedido.json"
 RESPALDOS=/root/backups
 RAMA=main
 CADA=1800
@@ -237,6 +238,28 @@ actualizar() {
     buscar
 }
 
+# ------------------------------------------------------------------ migración
+# El panel pide un volcado de la base para el archivo de migración. La API no
+# lleva el cliente de PostgreSQL: el volcado se hace aquí y se deja en el
+# volumen compartido; la API lo cifra, lo entrega y lo borra.
+exportar_migracion() {
+    local id destino
+    id="$(jq -r '.id // empty' "$PIDE_MIGRACION" 2>/dev/null)"
+    rm -f "$PIDE_MIGRACION"
+    [[ "$id" =~ ^[0-9a-f]{16}$ ]] || return 0
+    destino="$ESTADO/migracion-$id.dump"
+    if ( umask 077; compose exec -T postgres pg_dump -U radiuscontrol -Fc radiuscontrol > "$destino.tmp" 2>/dev/null ) \
+        && [ -s "$destino.tmp" ] \
+        && compose exec -T postgres pg_restore --list < "$destino.tmp" >/dev/null 2>&1; then
+        mv "$destino.tmp" "$destino"
+        registrar "volcado para migración listo"
+    else
+        rm -f "$destino.tmp"
+        printf 'pg_dump falló\n' > "$ESTADO/migracion-$id.error"
+        registrar "no se pudo hacer el volcado para migración"
+    fi
+}
+
 # ------------------------------------------------------------------ bucle
 if [ "${1:-}" = "buscar" ]; then
     buscar
@@ -252,7 +275,11 @@ if [ "$(jq -r .estado "$PROCESO" 2>/dev/null)" = "en-curso" ]; then
 fi
 SEGUNDOS=$CADA
 while :; do
-    if [ -f "$PEDIDO" ]; then
+    # Un volcado que la API no recogió (se cortó la descarga) no se queda en disco.
+    find "$ESTADO" -maxdepth 1 -name 'migracion-*' -mmin +5 -delete 2>/dev/null
+    if [ -f "$PIDE_MIGRACION" ]; then
+        exportar_migracion
+    elif [ -f "$PEDIDO" ]; then
         actualizar
         SEGUNDOS=0
     elif [ -f "$PIDE_BUSCAR" ] || [ "$SEGUNDOS" -ge "$CADA" ]; then
