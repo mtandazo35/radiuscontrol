@@ -178,6 +178,9 @@ type grupoDescartes struct {
 
 // listarDescartes resume las peticiones descartadas de las últimas 24 horas,
 // agrupadas por router, motivo y dirección, de la más reciente a la más antigua.
+// Un grupo deja de salir en cuanto ese router tiene una autenticación registrada
+// después de su último descarte: si FreeRADIUS le respondió (aceptando o
+// rechazando), el secreto ya coincide y el problema está resuelto.
 func (a *App) listarDescartes(w http.ResponseWriter, r *http.Request, _ *Operador) error {
 	router, _ := strconv.Atoi(r.URL.Query().Get("router"))
 	if router < 0 {
@@ -189,7 +192,10 @@ func (a *App) listarDescartes(w http.ResponseWriter, r *http.Request, _ *Operado
 		LEFT JOIN routers ro ON ro.id = d.router_id
 		LEFT JOIN empresas e ON e.id = ro.empresa_id
 		WHERE d.fecha > now() - interval '24 hours' AND ($1 = 0 OR d.router_id = $1)
-		GROUP BY 1, 2, 3, 4, 5 ORDER BY max(d.fecha) DESC LIMIT 20`, router)
+		GROUP BY 1, 2, 3, 4, 5
+		HAVING NOT EXISTS (SELECT 1 FROM autenticaciones a
+			WHERE a.router_id = d.router_id AND a.fecha > max(d.fecha))
+		ORDER BY max(d.fecha) DESC LIMIT 20`, router)
 	if err != nil {
 		return err
 	}

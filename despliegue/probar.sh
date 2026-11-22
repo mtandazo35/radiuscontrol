@@ -351,6 +351,14 @@ comprobar "Descartes: el panel avisa del secreto que no coincide, con su router 
 api GET "/api/descartes?router=999999999"
 comprobar "Descartes: filtrado por un router sin descartes no devuelve nada" \
     "$(codigo_es 200 && printf '%s' "$CUERPO" | jq -e '(.descartes | length) == 0' >/dev/null; echo $?)"
+# Corregido el secreto, el router vuelve a autenticar y el aviso se va solo.
+sleep 1
+S="$(radius 127.0.0.1 /tmp/secreto "$PAP_OK")"
+sleep 6
+api GET "/api/descartes?router=$RID"
+comprobar "Descartes: cuando el router vuelve a autenticar, el aviso desaparece" \
+    "$(codigo_es 200 && printf '%s' "$S" | grep -q 'Received Access-Accept' && printf '%s' "$CUERPO" | jq -e '(.descartes | length) == 0' >/dev/null; echo $?)" \
+    "$(printf '%s' "$CUERPO" | jq -c '.descartes[:2]')"
 
 # ---------------------------------------------------------------- sondeo SSH
 # Todo cliente SSH abre con «none» y RouterOS lo acompaña de un MS-CHAPv2

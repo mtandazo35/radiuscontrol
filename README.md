@@ -103,7 +103,9 @@ En todas las tablas:
   dado de alta (porque el secreto del router no coincide con el del panel, o porque no
   envía Message-Authenticator y se le exige), aparece un aviso aquí y en Inicio con el
   router, la dirección, cuántas peticiones y qué hacer. Solo cuentan las de routers del
-  panel: lo que viene de direcciones no registradas lo para antes el firewall.
+  panel: lo que viene de direcciones no registradas lo para antes el firewall. El aviso
+  de un router se quita solo en cuanto ese router vuelve a autenticar (aceptado o
+  rechazado), porque eso demuestra que el secreto ya coincide; si no, dura 24 horas.
 - **Sondeos sin clave**: al abrir una conexión SSH, antes de pedir la contraseña, RouterOS
   manda a RADIUS una petición con la contraseña vacía. Se rechaza como siempre, pero se
   registra aparte como «Sondeo sin clave»: no sale en «Todos», no cuenta como rechazo en

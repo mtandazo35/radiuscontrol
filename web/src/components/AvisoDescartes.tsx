@@ -7,7 +7,8 @@ import { fecha } from "@/lib/utils";
 import { useFiltro } from "../filtro";
 
 // Aviso de peticiones descartadas: las que FreeRADIUS tira sin responder aunque
-// vengan de un router dado de alta. No sale nada si no hay ninguna.
+// vengan de un router dado de alta. No sale nada si no hay ninguna, ni las de un
+// router que ya volvió a autenticar después (la API no las devuelve).
 
 interface GrupoDescartes {
   router_id: number;
@@ -81,7 +82,7 @@ export function AvisoDescartes() {
           <h2 className="text-sm font-semibold">Peticiones descartadas</h2>
           <p className="text-sm text-muted-foreground">
             FreeRADIUS las tiró sin responder, aunque vienen de routers dados de alta. Mientras siga así, nadie puede entrar a esos routers por
-            RADIUS. Últimas 24 horas.
+            RADIUS. Últimas 24 horas; cada aviso se quita solo cuando su router vuelve a autenticar.
           </p>
           <ul className="mt-3 divide-y rounded-md border">
             {datos.descartes.map((d) => (
