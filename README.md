@@ -358,6 +358,7 @@ Condiciones:
 | Ver el estado de los servicios | `cd /root/radiuscontrol/despliegue && docker compose ps` |
 | Ver el agente de firewall | `journalctl -u radiuscontrol-firewall` |
 | Ver el agente de actualización | `journalctl -u radiuscontrol-actualizar` |
+| Instalar en un servidor nuevo con los datos de otro | `RESTAURAR=/root/archivo.rcm bash /root/install-radiuscontrol.sh` (ver [Migrar a otro servidor](#migrar-a-otro-servidor)) |
 | Ejecutar las pruebas | `cd /root/radiuscontrol/despliegue && ./probar.sh` |
 
 Las reglas de UFW con los comentarios `radiuscontrol`, `radiuscontrol-panel` y
@@ -366,7 +367,7 @@ agente las repone o las quita en un minuto como mucho.
 
 ## Pruebas
 
-`despliegue/probar.sh` ejecuta más de 250 pruebas de extremo a extremo en el propio
+`despliegue/probar.sh` ejecuta más de 260 pruebas de extremo a extremo en el propio
 servidor: usa la API como lo haría el panel y verifica el resultado con logins RADIUS
 reales contra FreeRADIUS y con las reglas reales de UFW. Crea sus propios datos, con su
 propia cuenta, y los borra al terminar. La evidencia queda en `despliegue/evidencias/`.
