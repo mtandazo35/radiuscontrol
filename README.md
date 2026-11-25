@@ -160,6 +160,10 @@ y **Accesos**, **Mantenimiento** y **Migración** (solo administradores).
 
 ### Seguridad
 
+Organizada en pestañas, que se recuerdan mientras dure la sesión: **Operadores**,
+**Sesiones**, **Bloqueos** y **Actividad**. Una cuenta de solo lectura ve **Mi cuenta** y
+**Sesiones**.
+
 - Operadores del panel con dos roles: administrador y solo lectura.
 - Verificación en dos pasos (TOTP) con código QR.
 - Bloqueo del inicio de sesión tras 4 intentos fallidos, por dirección IP y por cuenta,
