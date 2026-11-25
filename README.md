@@ -23,7 +23,9 @@ funcionando con la última configuración cargada.
 
 ## Qué se puede hacer desde el panel
 
-El panel tiene tema oscuro por omisión y tema claro, y se puede usar desde el teléfono. En
+El panel tiene tema oscuro por omisión y tema claro, y se puede usar desde el teléfono. Su
+icono (un escudo con cerradura, RiShieldKeyholeFill de react-icons) sale en la pestaña del
+navegador y al guardarlo en la pantalla de inicio del móvil. En
 la barra superior hay un filtro por router, que afecta a Inicio, Routers y
 Autenticaciones, y un botón para volver a pedir los datos.
 
