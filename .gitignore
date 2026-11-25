@@ -13,6 +13,16 @@
 /secrets/
 *.key
 *.pem
+*.crt
+
+# Volcados, migraciones exportadas y respaldos locales
+*.db
+*.dump
+*.rcm
+*.sql
+!/api/migraciones/*.sql
+backups/
+logs/
 
 # Compilados y dependencias
 /bin/
