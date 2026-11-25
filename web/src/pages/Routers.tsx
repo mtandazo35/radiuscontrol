@@ -400,7 +400,7 @@ export default function Routers() {
                   {r.descripcion && <div className="text-xs text-muted-foreground">{r.descripcion}</div>}
                 </Td>
                 <Td className="whitespace-nowrap">{r.empresa || <Badge variant="warning">Sin empresa</Badge>}</Td>
-                <Td className="font-mono text-xs" valor={r.redes[0] ?? ""}>
+                <Td className="whitespace-nowrap font-mono text-xs" valor={r.redes[0] ?? ""}>
                   {r.redes.length > 0 && <Copiable texto={r.redes[0]} />}
                   {r.redes.length > 1 && (
                     <span className="ml-1.5 rounded bg-muted px-1.5 py-0.5 font-sans text-[11px] text-muted-foreground" title={r.redes.slice(1).join("\n")}>
