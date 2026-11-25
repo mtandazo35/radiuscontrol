@@ -1411,6 +1411,13 @@ comprobar "Proxy: la API anota la IP que pone el proxy y no la que el cliente es
     "$([ "$(sql "SELECT count(*) FROM intentos_ip WHERE ip = '$IP_PROXY_REAL'")" -ge 1 ] \
         && [ "$(sql "SELECT count(*) FROM intentos_ip WHERE ip = '$IP_PROXY_FALSA'")" = 0 ]; echo $?)" \
     "$(sql "SELECT string_agg(DISTINCT ip, ' ') FROM intentos_ip WHERE fecha > now() - interval '1 minute'")"
+# Caché del navegador: la página se revalida siempre; los archivos con huella en el nombre, un año.
+CACHE_PAGINA="$(curl -sk -m 10 -D - -o /dev/null "$PANEL/" | tr -d '\r' | grep -i '^cache-control:')"
+ARCHIVO_JS="$(curl -sk -m 10 "$PANEL/" | grep -o '/assets/[^"]*\.js' | head -1)"
+CACHE_JS="$(curl -sk -m 10 -D - -o /dev/null "$PANEL$ARCHIVO_JS" | tr -d '\r' | grep -i '^cache-control:')"
+comprobar "Caché: la página se revalida siempre y los archivos versionados se guardan un año" \
+    "$(printf '%s' "$CACHE_PAGINA" | grep -qi 'no-cache' && printf '%s' "$CACHE_JS" | grep -qi 'immutable'; echo $?)" \
+    "página: $CACHE_PAGINA; $ARCHIVO_JS: $CACHE_JS"
 docker exec radiuscontrol-api radiuscontrol desbloquear-ip "$IP_PROXY_REAL" >/dev/null
 docker exec radiuscontrol-api radiuscontrol desbloquear-ip "$IP_PROXY_FALSA" >/dev/null
 
