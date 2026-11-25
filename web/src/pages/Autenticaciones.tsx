@@ -1,6 +1,6 @@
 import { Pencil } from "lucide-react";
 import * as React from "react";
-import { Card, Copiable, EstadoVacio, Input, Paginacion, Punto, Select, Table, Td, ThOrden, useOrden } from "@/components/ui";
+import { Ayuda, Card, Copiable, EstadoVacio, Input, Paginacion, Punto, Select, Table, Td, ThOrden, useOrden } from "@/components/ui";
 import { ModalOrigen, type BorradorOrigen } from "@/components/Origenes";
 import { BotonVaciar } from "@/components/Vaciar";
 import { api, type Autenticacion, type PaginaAutenticaciones } from "@/lib/api";
@@ -124,8 +124,11 @@ export default function Autenticaciones() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
         <p className="min-w-0 max-w-4xl flex-1 basis-80 text-sm text-muted-foreground">
-          Cada intento de login que FreeRADIUS aceptó o rechazó, en hora de Ecuador. La primera página se actualiza sola. Los paquetes de
-          orígenes no autorizados o con secreto incorrecto no aparecen aquí: FreeRADIUS los descarta sin responder.
+          Cada intento de login a los routers, en hora de Ecuador.{" "}
+          <Ayuda>
+            Cada intento de login que FreeRADIUS aceptó o rechazó, en hora de Ecuador. La primera página se actualiza sola. Los paquetes de
+            orígenes no autorizados o con secreto incorrecto no aparecen aquí: FreeRADIUS los descarta sin responder.
+          </Ayuda>
         </p>
         <BotonVaciar
           registro="autenticaciones"

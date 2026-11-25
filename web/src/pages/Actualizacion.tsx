@@ -1,6 +1,6 @@
 import { Download, RefreshCw } from "lucide-react";
 import { useActualizacion, versionCorta } from "@/components/Actualizacion";
-import { Badge, Button, Card, EstadoVacio } from "@/components/ui";
+import { Ayuda, Badge, Button, Card, EstadoVacio } from "@/components/ui";
 import { cn, fecha } from "@/lib/utils";
 import { useApp } from "../contexto";
 
@@ -42,8 +42,11 @@ export default function Actualizacion() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
         <p className="min-w-0 max-w-4xl flex-1 basis-80 text-sm text-muted-foreground">
-          Las mejoras se publican en el repositorio. El servidor mira cada 30 minutos si hay cambios nuevos, pero nunca los instala solo: los
-          instalas tú desde aquí.
+          Instala desde aquí las mejoras publicadas.{" "}
+          <Ayuda>
+            Las mejoras se publican en el repositorio. El servidor mira cada 30 minutos si hay cambios nuevos, pero nunca los instala solo: los
+            instalas tú desde aquí.
+          </Ayuda>
         </p>
         <Button variant="outline" onClick={act.buscar} disabled={act.buscando || act.enCurso}>
           <RefreshCw className={cn(act.buscando && "motion-safe:animate-spin")} />

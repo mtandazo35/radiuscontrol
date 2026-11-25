@@ -1,6 +1,6 @@
 import { Plus, UserCog } from "lucide-react";
 import * as React from "react";
-import { Badge, Button, Card, Copiable, Dialog, DialogContent, DialogFooter, EstadoVacio, Input, Label, MenuAcciones, Paginacion, Punto, Table, Td, Th, ThOrden, useOrden } from "@/components/ui";
+import { Ayuda, Badge, Button, Card, Copiable, Dialog, DialogContent, DialogFooter, EstadoVacio, Input, Label, MenuAcciones, Paginacion, Punto, Table, Td, Th, ThOrden, useOrden } from "@/components/ui";
 import { api, type Bloqueos as DatosBloqueos, type OperadorDetalle, type PaginaEventos, type Sesion } from "@/lib/api";
 import { ModalMiCuenta, nombreRol } from "@/components/MiCuenta";
 import { BotonVaciar } from "@/components/Vaciar";
@@ -60,11 +60,11 @@ const nombreAccion: Record<string, string> = {
 function Seccion({ titulo, descripcion, children, accion }: { titulo: string; descripcion: string; children: React.ReactNode; accion?: React.ReactNode }) {
   return (
     <Card>
-      <div className="flex flex-wrap items-start justify-between gap-2 p-4">
-        <div>
-          <h2 className="text-base font-semibold">{titulo}</h2>
-          <p className="text-sm text-muted-foreground">{descripcion}</p>
-        </div>
+      <div className="flex flex-wrap items-center justify-between gap-2 p-4">
+        <h2 className="flex items-center gap-1.5 text-base font-semibold">
+          {titulo}
+          <Ayuda etiqueta={`Qué es «${titulo}»`}>{descripcion}</Ayuda>
+        </h2>
         {accion}
       </div>
       {children}
@@ -601,7 +601,10 @@ export default function Seguridad() {
     <div className="space-y-4">
       <div>
         <p className="text-sm text-muted-foreground">
-          Acceso a la plataforma: quién puede entrar, las sesiones abiertas y el registro de lo que se hace. Tu contraseña y tu verificación en dos pasos están en el botón «Mi cuenta».
+          Quién entra al panel, sus sesiones y lo que se hace en él.{" "}
+          <Ayuda>
+            Acceso a la plataforma: quién puede entrar, las sesiones abiertas y el registro de lo que se hace. Tu contraseña y tu verificación en dos pasos están en el botón «Mi cuenta».
+          </Ayuda>
         </p>
       </div>
       {admin ? <Operadores /> : <TarjetaMiCuenta />}

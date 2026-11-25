@@ -1,7 +1,7 @@
 import { Eye, EyeOff, Plus, Users } from "lucide-react";
 import * as React from "react";
 import { accesosDe, BloqueAccesos, CambiosMasivos, permisosDe, type Permisos } from "@/components/Accesos";
-import { Badge, Button, Card, Copiable, Dialog, DialogContent, DialogFooter, EstadoVacio, Input, Label, MenuAcciones, Punto, Select, Table, Td, Textarea, Th, ThOrden, comparar, useOrden } from "@/components/ui";
+import { Ayuda, Badge, Button, Card, Copiable, Dialog, DialogContent, DialogFooter, EstadoVacio, Input, Label, MenuAcciones, Punto, Select, Table, Td, Textarea, Th, ThOrden, comparar, useOrden } from "@/components/ui";
 import { api, type Empresa, type ModoAcceso, type RespuestaRouter, type Router, type Usuario } from "@/lib/api";
 import { fecha } from "@/lib/utils";
 import { useApp } from "../contexto";
@@ -289,7 +289,10 @@ export default function Routers() {
       <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
         <div className="min-w-0 flex-1 basis-80">
           <p className="max-w-4xl text-sm text-muted-foreground">
-            Cada router se identifica por la dirección de origen de sus paquetes y tiene su propio secreto. El firewall del servidor solo deja pasar al puerto RADIUS las redes de los routers activos.
+            Routers que autentican contra este servidor.{" "}
+            <Ayuda>
+              Cada router se identifica por la dirección de origen de sus paquetes y tiene su propio secreto. El firewall del servidor solo deja pasar al puerto RADIUS las redes de los routers activos.
+            </Ayuda>
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
