@@ -25,8 +25,10 @@ funcionando con la última configuración cargada.
 
 El panel tiene tema oscuro por omisión y tema claro, y se puede usar desde el teléfono. Su
 icono (un escudo con cerradura, RiShieldKeyholeFill de react-icons) sale en la pestaña del
-navegador y al guardarlo en la pantalla de inicio del móvil. En
-la barra superior hay un filtro por router, que afecta a Inicio, Routers y
+navegador y al guardarlo en la pantalla de inicio del móvil. Las ventanas tienen el ancho
+justo para lo que llevan: estrechas para avisos y formularios de uno o dos campos, medianas
+para los formularios normales y anchas solo para los de dos columnas (Router y Cambios
+masivos); en el teléfono ocupan el ancho de la pantalla. En la barra superior hay un filtro por router, que afecta a Inicio, Routers y
 Autenticaciones, y un botón para volver a pedir los datos.
 
 En todas las tablas:
