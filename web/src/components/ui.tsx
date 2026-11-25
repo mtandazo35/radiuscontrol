@@ -474,19 +474,29 @@ export function ThOrden<C extends string>({
 
 export const Dialog = DialogPrimitive.Root;
 
+// Ancho de una ventana según lo que lleva: «sm» avisos, confirmaciones y formularios de uno o dos campos;
+// «md» (por defecto) formularios normales; «lg» formularios a dos columnas.
+const anchoDialogo = {
+  sm: "max-w-[24rem]",
+  md: "max-w-[28rem]",
+  lg: "max-w-[36rem]",
+} as const;
+
 export function DialogContent({
   className,
   children,
   titulo,
   descripcion,
+  tamano = "md",
   ...props
-}: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & { titulo: string; descripcion?: string }) {
+}: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & { titulo: string; descripcion?: string; tamano?: keyof typeof anchoDialogo }) {
   return (
     <DialogPrimitive.Portal>
       <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/60" />
       <DialogPrimitive.Content
         className={cn(
-          "fixed left-1/2 top-1/2 z-50 grid max-h-[90vh] w-[calc(100vw-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto rounded-lg border bg-card p-6 shadow-lg",
+          "fixed left-1/2 top-1/2 z-50 grid max-h-[90vh] w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 gap-3 overflow-y-auto rounded-lg border bg-card p-5 shadow-lg",
+          anchoDialogo[tamano],
           className,
         )}
         {...props}

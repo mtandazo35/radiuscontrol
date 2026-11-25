@@ -259,7 +259,7 @@ function Operadores() {
 
       <Dialog open={alta !== null} onOpenChange={(abierto) => !abierto && setAlta(null)}>
         {alta && (
-          <DialogContent titulo="Nuevo operador" descripcion="El panel genera una contraseña inicial y te la muestra una sola vez.">
+          <DialogContent tamano="sm" titulo="Nuevo operador" descripcion="El panel genera una contraseña inicial y te la muestra una sola vez.">
             <form onSubmit={crear} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="op-usuario">Usuario</Label>

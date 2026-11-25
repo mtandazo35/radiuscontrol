@@ -148,7 +148,7 @@ export function ProveedorApp({ children }: { children: React.ReactNode }) {
       {cargando ? null : children}
       <Dialog open={aviso !== null} onOpenChange={(abierto) => !abierto && cerrar(false)}>
         {aviso && (
-          <DialogContent titulo={aviso.titulo} descripcion={aviso.mensaje}>
+          <DialogContent tamano="sm" titulo={aviso.titulo} descripcion={aviso.mensaje}>
             {aviso.copiable && (
               <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-md border bg-muted p-3 font-mono text-xs">
                 {aviso.copiable}

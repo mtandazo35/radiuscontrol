@@ -457,7 +457,7 @@ export default function Routers() {
 
       <Dialog open={form !== null} onOpenChange={(abierto) => !abierto && setForm(null)}>
         {form && (
-          <DialogContent className="max-w-2xl" titulo={form.id === null ? "Nuevo router" : "Editar router"}>
+          <DialogContent tamano="lg" titulo={form.id === null ? "Nuevo router" : "Editar router"}>
             <form onSubmit={guardar} className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">

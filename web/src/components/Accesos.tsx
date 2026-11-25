@@ -508,7 +508,7 @@ export function CambiosMasivos({ abierto, ...props }: PropsMasivo & { abierto: b
     <Dialog open={abierto} onOpenChange={(a) => !a && props.onCerrar()}>
       {abierto && (
         <DialogContent
-          className="max-w-2xl"
+          tamano="lg"
           titulo="Cambios masivos de acceso"
           descripcion="Cambia de una vez quién entra a varios routers. Antes de aplicar se muestra un resumen para confirmar."
         >

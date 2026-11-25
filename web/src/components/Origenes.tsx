@@ -44,7 +44,7 @@ export function ModalOrigen({ borrador, onCerrar, onGuardado }: { borrador: Borr
   return (
     <Dialog open={borrador !== null} onOpenChange={(abierto) => !abierto && onCerrar()}>
       {borrador && (
-        <DialogContent titulo="Nombre de un origen" descripcion="La descripción aparece bajo la dirección en Autenticaciones y en Inicio.">
+        <DialogContent tamano="sm" titulo="Nombre de un origen" descripcion="La descripción aparece bajo la dirección en Autenticaciones y en Inicio.">
           <form onSubmit={guardar} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="origen-red">Dirección o red</Label>
