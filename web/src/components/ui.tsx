@@ -1,7 +1,10 @@
 // Componentes base al estilo de shadcn/ui (Radix + Tailwind + variantes).
 import * as DialogPrimitive from "@radix-ui/react-dialog";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import * as Popover from "@radix-ui/react-popover";
+import * as TabsPrimitive from "@radix-ui/react-tabs";
 import { cva, type VariantProps } from "class-variance-authority";
-import { ArrowDown, ArrowUp, Check, ChevronsUpDown, Copy, Inbox, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, ChevronsUpDown, CircleHelp, Copy, Inbox, MoreHorizontal, X } from "lucide-react";
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
@@ -373,7 +376,7 @@ export function Copiable({ texto, className }: { texto: string | null | undefine
   };
   return (
     <span className={cn("group/copia inline-flex items-center gap-1 font-mono", className)}>
-      <span className="break-all">{texto}</span>
+      <span className="whitespace-nowrap">{texto}</span>
       <button
         type="button"
         onClick={copiar}
@@ -581,3 +584,140 @@ export function Paginacion({
     </div>
   );
 }
+
+// Menú desplegable con acciones secundarias para filas de tablas o tarjetas.
+export interface AccionMenu {
+  texto: string;
+  onSelect: () => void;
+  peligro?: boolean; // en rojo (Eliminar)
+  deshabilitada?: boolean;
+  separadoAntes?: boolean; // línea divisoria encima de esta opción
+}
+
+export function MenuAcciones({ acciones, etiqueta = "Más acciones" }: { acciones: AccionMenu[]; etiqueta?: string }) {
+  return (
+    // modal={false}: una opción que abre una ventana (Eliminar → confirmar) no deja la página sin clics.
+    <DropdownMenu.Root modal={false}>
+      <DropdownMenu.Trigger asChild>
+        <Button
+          size="icon"
+          variant="ghost"
+          aria-label={etiqueta}
+          title={etiqueta}
+          className="size-8 text-muted-foreground hover:text-foreground"
+        >
+          <MoreHorizontal />
+        </Button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          align="end"
+          sideOffset={4}
+          className="z-[60] min-w-[11rem] rounded-md border bg-card p-1 text-sm shadow-lg"
+        >
+          {acciones.map((a, i) => (
+            <React.Fragment key={i}>
+              {a.separadoAntes && <DropdownMenu.Separator className="my-1 h-px bg-border" />}
+              <DropdownMenu.Item
+                disabled={a.deshabilitada}
+                onSelect={a.onSelect}
+                className={cn(
+                  "flex cursor-default select-none items-center rounded-sm px-2.5 py-1.5 outline-none data-[highlighted]:bg-accent data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+                  a.peligro && "text-destructive data-[highlighted]:bg-destructive/10",
+                )}
+              >
+                {a.texto}
+              </DropdownMenu.Item>
+            </React.Fragment>
+          ))}
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  );
+}
+
+// Icono de ayuda contextual que despliega información al pulsar.
+export function Ayuda({ children, etiqueta = "Más información" }: { children: React.ReactNode; etiqueta?: string }) {
+  return (
+    <Popover.Root>
+      <Popover.Trigger asChild>
+        <button
+          type="button"
+          aria-label={etiqueta}
+          className="inline-flex size-5 items-center justify-center rounded-full align-middle text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <CircleHelp className="size-4" />
+        </button>
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content
+          side="bottom"
+          align="start"
+          sideOffset={6}
+          className="z-[60] max-w-xs rounded-md border bg-card p-3 text-xs leading-relaxed text-muted-foreground shadow-lg"
+        >
+          {children}
+          <Popover.Arrow className="fill-border" />
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
+  );
+}
+
+// Indicador visual de estado compacto con punto de color y texto.
+export function Punto({
+  tono = "muted",
+  children,
+  className,
+  title,
+}: {
+  tono?: "success" | "warning" | "destructive" | "primary" | "muted";
+  children: React.ReactNode;
+  className?: string;
+  title?: string;
+}) {
+  const color =
+    tono === "success"
+      ? "bg-success"
+      : tono === "warning"
+        ? "bg-warning"
+        : tono === "destructive"
+          ? "bg-destructive"
+          : tono === "primary"
+            ? "bg-primary"
+            : "bg-muted-foreground/50";
+
+  return (
+    <span title={title} className={cn("inline-flex items-center gap-1.5 whitespace-nowrap text-sm", className)}>
+      <span aria-hidden="true" className={cn("size-2 shrink-0 rounded-full", color)} />
+      {children}
+    </span>
+  );
+}
+
+// Raíz contenedora para el conjunto de pestañas.
+export const Pestanas = TabsPrimitive.Root;
+
+// Lista horizontal de selección de pestañas con soporte para desplazamiento.
+export function ListaPestanas({ className, ...props }: React.ComponentPropsWithoutRef<typeof TabsPrimitive.List>) {
+  return <TabsPrimitive.List className={cn("flex gap-1 overflow-x-auto border-b scrollbar-none", className)} {...props} />;
+}
+
+// Pestaña individual que activa su panel correspondiente.
+export function Pestana({ className, ...props }: React.ComponentPropsWithoutRef<typeof TabsPrimitive.Trigger>) {
+  return (
+    <TabsPrimitive.Trigger
+      className={cn(
+        "-mb-px whitespace-nowrap border-b-2 border-transparent px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring data-[state=active]:border-primary data-[state=active]:text-foreground",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+// Panel contenedor del contenido para la pestaña activa.
+export function PanelPestana({ className, ...props }: React.ComponentPropsWithoutRef<typeof TabsPrimitive.Content>) {
+  return <TabsPrimitive.Content className={cn("mt-4 space-y-4 focus-visible:outline-none", className)} {...props} />;
+}
+
