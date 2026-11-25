@@ -268,10 +268,10 @@ function Leyenda() {
   return (
     <div className="flex items-center gap-4 text-xs text-muted-foreground">
       <span className="flex items-center gap-1.5">
-        <span className="size-2 rounded-sm bg-success" /> Access-Accept
+        <span className="size-2 rounded-sm bg-success" /> Aceptados
       </span>
       <span className="flex items-center gap-1.5">
-        <span className="size-2 rounded-sm bg-destructive" /> Access-Reject
+        <span className="size-2 rounded-sm bg-destructive" /> Rechazados
       </span>
     </div>
   );
