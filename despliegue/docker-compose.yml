@@ -74,10 +74,11 @@ services:
     network_mode: host
     environment:
       SITIO: ${SITIO}
-      # Vacío = la IP del cliente se acepta de cualquier proxy (ver Caddyfile).
-      PROXIES_CONFIABLES: ${PROXIES_CONFIABLES:-0.0.0.0/0 ::/0}
     volumes:
       - caddy_data:/data
+      # Orígenes de los que se acepta la IP real del cliente (los escribe el
+      # agente de firewall: los que tienen el 443 abierto).
+      - proxies:/proxies:ro
 
 secrets:
   postgres_clave:
@@ -92,3 +93,4 @@ volumes:
   compilado:
   registro:
   caddy_data:
+  proxies:

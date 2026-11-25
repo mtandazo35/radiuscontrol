@@ -29,6 +29,10 @@ MARCA_SSH="radiuscontrol-ssh"
 # Lo último que se sabe de esos accesos, en JSON; vacío si no se pudo componer.
 SERVIDOR_JSON=""
 LISTA_ACCESOS=""
+# Orígenes de los que la web acepta la IP real del cliente (proxies): los que
+# tienen el 443 abierto. Va en un volumen propio del contenedor web, no en el
+# de la configuración compilada, que lleva secretos.
+PROXIES="${RC_PROXIES:-/var/lib/docker/volumes/radiuscontrol_proxies/_data/proxies.caddy}"
 
 registrar() { echo "radiuscontrol-firewall: $*"; }
 
@@ -281,6 +285,25 @@ sincronizar() {
     tengo="$(actuales)"
     [ "$tengo" = "$quiero" ] || estado="error"
     informar "$estado" "$(version_aplicada)" "$tengo"
+    sincronizar_proxies
+}
+
+# Le dice a la web de qué orígenes acepta la IP real del cliente (X-Real-IP o
+# X-Forwarded-For): de los que tienen permitido el 443 en UFW, gestionados por
+# el panel o cargados a mano, y del propio equipo. Así, dar paso a un proxy en
+# el firewall basta para que el panel vea la IP de quien entra por él, y quien
+# no tiene paso no puede declarar otra. Si la lista cambia, se reinicia la web
+# (un par de segundos) para que la cargue.
+sincronizar_proxies() {
+    local redes nuevo
+    [ -d "$(dirname "$PROXIES")" ] || return 0
+    redes="$(reglas_de panel "$PUERTO_PANEL" "$MARCA_PANEL" | awk -F '\t' '{print $2}' \
+        | sed 's#^cualquiera$#0.0.0.0/0 ::/0#' | tr ' ' '\n' | grep -E "$VALIDA" | sort -u | tr '\n' ' ')"
+    nuevo="trusted_proxies static 127.0.0.0/8 ::1 ${redes% }"
+    [ "$(cat "$PROXIES" 2>/dev/null)" = "$nuevo" ] && return 0
+    printf '%s\n' "$nuevo" > "$PROXIES.tmp" && mv "$PROXIES.tmp" "$PROXIES"
+    registrar "proxies de la web: ${redes:-ninguno}"
+    docker restart radiuscontrol-web >/dev/null 2>&1 || true
 }
 
 # Huella de la lista de accesos: cambia en cuanto el panel la reescribe.

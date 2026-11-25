@@ -243,17 +243,16 @@ momento un certificado interno para ese nombre.
 
 **La dirección de quien entra.** El proxy le pasa al panel la IP real de cada persona, que
 es la que aparece en la actividad y la que cuenta para el bloqueo por intentos fallidos. Se
-toma primero de `X-Real-IP`, que el proxy escribe con la dirección que ve. Un cliente no
-puede añadirla a través del proxy, así que tampoco puede hacerse pasar por otra IP. Sin
-esta cabecera, todos los que entraran por el proxy compartirían su IP, y cuatro intentos
-fallidos de cualquiera bloquearían a todos.
+toma de `X-Real-IP` (o, si no viene, de `X-Forwarded-For`), y solo se acepta de los orígenes
+que tienen permitido el 443 en el firewall, gestionados desde el panel o cargados a mano. Dar
+paso al proxy en Accesos al servidor basta: el agente de firewall le pasa la lista a la web
+en menos de un minuto (la web se reinicia un par de segundos). Sin esto, todos los que
+entraran por el proxy compartirían su IP, y cuatro intentos fallidos de cualquiera
+bloquearían a todos.
 
-Por omisión, esa cabecera se acepta venga de donde venga, para que funcione con cualquier
-proxy. Quien llegue directo al 443 podría escribirla a mano y aparecer con otra IP. El
-bloqueo por cuenta sigue protegiendo igual, y por eso el 443 debe seguir abierto solo a
-las redes que lo necesitan. Para aceptarla solo de proxies concretos, añade al `.env` del
-servidor `PROXIES_CONFIABLES=192.0.2.10/32` (varias redes, separadas por espacios) y
-reinicia el contenedor web: `docker compose up -d web`.
+Un origen sin paso al 443 no puede declarar otra IP: el panel anota la suya. Quien sí tiene
+paso, aunque no sea un proxy, podría escribir la cabecera a mano y aparecer con otra IP; el
+bloqueo por cuenta le sigue afectando igual.
 
 ## Conectar un router MikroTik
 

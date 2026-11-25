@@ -1386,9 +1386,16 @@ rm -rf "$MIG_DIR"
 
 # ---------------------------------------------------------------- detrás de un proxy
 # El panel responde por cualquier nombre (un proxy como NPM lo reenvía con el
-# dominio del cliente) y la IP que ve la API es la que pone el proxy en
-# X-Real-IP, no la que un cliente escriba en X-Forwarded-For.
-PANEL="https://$IP_PUBLICA"
+# dominio del cliente). La IP real del cliente se acepta solo de los orígenes
+# con el 443 abierto en UFW y del propio equipo: aquí se entra por 127.0.0.1
+# para hacer de proxy. Que un origen sin paso no pueda declarar otra IP lo
+# comprueba la prueba «Bloqueo por IP: la dirección que anota el panel…».
+PANEL="https://127.0.0.1"
+PROXIES_WEB=/var/lib/docker/volumes/radiuscontrol_proxies/_data/proxies.caddy
+REDES_443="$(ufw show added | grep -E "port 443 |allow 443" | grep -oE 'from [^ ]+' | awk '{print $2}' | sort -u | tr '\n' ' ')"
+comprobar "Proxy: la web acepta la IP real solo del propio equipo y de los orígenes con el 443 abierto en UFW" \
+    "$([ "$(tr ' ' '\n' < "$PROXIES_WEB" | tail -n +3 | grep -v -e '^127\.0\.0\.0/8$' -e '^::1$' -e '^$' | sort -u | tr '\n' ' ')" = "$REDES_443" ]; echo $?)" \
+    "lista: $(cat "$PROXIES_WEB" 2>/dev/null); UFW 443: $REDES_443"
 POR_IP="$(curl -sk -m 10 "$PANEL/" | sha256sum)"
 POR_NOMBRE="$(curl -sk -m 10 -H 'Host: panel-de-prueba.example.com' "$PANEL/" | sha256sum)"
 comprobar "Proxy: con cualquier nombre en Host se sirve el mismo panel que por la IP" \

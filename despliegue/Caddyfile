@@ -11,13 +11,13 @@
 	}
 
 	# IP del cliente cuando el panel está detrás de un proxy (NPM, Caddy,
-	# Traefik...). Por defecto se acepta de cualquier origen, para que funcione
-	# con cualquier proxy sin configurarlo. Se toma primero X-Real-IP, que el
-	# proxy pone con la dirección que ve y que un cliente no puede añadir a
-	# través de él. Para aceptarla solo de proxies concretos, PROXIES_CONFIABLES
-	# en el .env (redes separadas por espacios).
+	# Traefik...). Se acepta solo de los orígenes que tienen permitido el 443 en
+	# el firewall: el agente de firewall escribe esa lista en /proxies y reinicia
+	# este contenedor cuando cambia. Dar paso a un proxy en «Accesos al
+	# servidor» basta. Se toma primero X-Real-IP, que el proxy pone con la
+	# dirección que ve. Sin la lista (recién instalado), no se acepta de nadie.
 	servers {
-		trusted_proxies static {$PROXIES_CONFIABLES:0.0.0.0/0 ::/0}
+		import /proxies/*.caddy
 		client_ip_headers X-Real-IP X-Forwarded-For
 	}
 }
