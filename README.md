@@ -340,6 +340,11 @@ se instalan solas: las lanza un administrador desde el apartado Actualización c
 
 Se conservan los cinco últimos respaldos.
 
+Tras una actualización, los navegadores cargan el panel nuevo solos, sin recargar a mano: la
+página se comprueba con el servidor cada vez que se abre, y el código y los estilos llevan
+en el nombre una huella que cambia con cada versión, así que nunca se mezclan con los viejos
+(por eso se pueden guardar en caché un año).
+
 ## Migrar a otro servidor
 
 Para llevar RadiusControl a otro servidor con todo lo que tiene: routers, usuarios,
