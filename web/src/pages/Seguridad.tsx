@@ -5,6 +5,7 @@ import { api, type Bloqueos as DatosBloqueos, type OperadorDetalle, type PaginaE
 import { ModalMiCuenta, nombreRol } from "@/components/MiCuenta";
 import { BotonVaciar } from "@/components/Vaciar";
 import { fecha } from "@/lib/utils";
+import { detalleLegible } from "@/lib/actividad";
 import { useApp } from "../contexto";
 
 const selector =
@@ -567,7 +568,7 @@ function Actividad() {
                 ) : (
                   (nombreAccion[e.accion] ?? e.accion)
                 )}
-                {e.detalle !== "{}" && <div className="max-w-[22rem] truncate font-mono text-xs text-muted-foreground" title={e.detalle}>{e.detalle}</div>}
+                {detalleLegible(e.detalle) && <div className="max-w-[26rem] truncate text-xs text-muted-foreground" title={detalleLegible(e.detalle)}>{detalleLegible(e.detalle)}</div>}
               </Td>
               <Td>{e.objeto}</Td>
               <Td className="text-xs">

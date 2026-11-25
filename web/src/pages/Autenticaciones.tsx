@@ -1,6 +1,6 @@
 import { Pencil } from "lucide-react";
 import * as React from "react";
-import { Badge, Card, Copiable, EstadoVacio, Input, Paginacion, Select, Table, Td, ThOrden, useOrden } from "@/components/ui";
+import { Card, Copiable, EstadoVacio, Input, Paginacion, Punto, Select, Table, Td, ThOrden, useOrden } from "@/components/ui";
 import { ModalOrigen, type BorradorOrigen } from "@/components/Origenes";
 import { BotonVaciar } from "@/components/Vaciar";
 import { api, type Autenticacion, type PaginaAutenticaciones } from "@/lib/api";
@@ -11,8 +11,8 @@ import { useFiltro } from "../filtro";
 
 const filtros = [
   { valor: "", texto: "Todos", punto: "" },
-  { valor: "aceptado", texto: "Access-Accept", punto: "bg-success" },
-  { valor: "rechazado", texto: "Access-Reject", punto: "bg-destructive" },
+  { valor: "aceptado", texto: "Aceptados", punto: "bg-success" },
+  { valor: "rechazado", texto: "Rechazados", punto: "bg-destructive" },
   { valor: "sondeo", texto: "Sondeos", punto: "bg-muted-foreground" },
 ];
 
@@ -23,7 +23,7 @@ const CLAVE_AGRUPAR = "rc-tabla:autenticaciones:agrupar";
 function claveGrupo(a: Autenticacion, agrupar: Agrupacion) {
   return agrupar === "router" ? a.router : agrupar === "empresa" ? a.empresa : agrupar === "usuario" ? a.usuario : a.resultado;
 }
-const nombreResultado: Record<string, string> = { aceptado: "Access-Accept", rechazado: "Access-Reject", sondeo: "Sondeos sin clave" };
+const nombreResultado: Record<string, string> = { aceptado: "Aceptados", rechazado: "Rechazados", sondeo: "Sondeos sin clave" };
 function tituloGrupo(valor: string, agrupar: Agrupacion) {
   if (agrupar === "resultado") return nombreResultado[valor] ?? valor;
   if (valor) return valor;
@@ -181,7 +181,7 @@ export default function Autenticaciones() {
       {/* Visor de registros: fondo de consola, letra monoespaciada y los
           rechazos señalados en rojo para que salten a la vista. */}
       <Card className="overflow-hidden bg-consola">
-        <Table id="autenticaciones" ordenLocal={false} className="font-mono text-xs">
+        <Table id="autenticaciones" ordenLocal={false} className="text-[13px]">
           <thead>
             <tr>
               <ThOrden campo="fecha" orden={orden} onOrden={ordenar}>
@@ -236,14 +236,12 @@ export default function Autenticaciones() {
               const sondeo = a.resultado === "sondeo";
               return (
                 <tr key={a.id} className={cn(rechazado && "shadow-[inset_2px_0_0_hsl(var(--destructive))]")}>
-                  <Td className="whitespace-nowrap py-2 text-muted-foreground">{fecha(a.fecha)}</Td>
+                  <Td className="whitespace-nowrap py-2 tabular-nums text-muted-foreground">{fecha(a.fecha)}</Td>
                   <Td className="py-2">
                     {sondeo ? (
-                      <Badge variant="muted" title="Petición con la contraseña vacía: el cliente SSH la envía al abrir la conexión, antes del login">
-                        Sondeo sin clave
-                      </Badge>
+                      <Punto tono="muted" title="Petición con la contraseña vacía: el cliente SSH la envía al abrir la conexión, antes del login">Sondeo</Punto>
                     ) : (
-                      <Badge variant={rechazado ? "destructive" : "success"}>{rechazado ? "Access-Reject" : "Access-Accept"}</Badge>
+                      <Punto tono={rechazado ? "destructive" : "success"}>{rechazado ? "Rechazado" : "Aceptado"}</Punto>
                     )}
                   </Td>
                   <Td className="max-w-[14rem] truncate py-2 font-semibold" title={a.usuario}>
@@ -255,7 +253,7 @@ export default function Autenticaciones() {
                   </Td>
                   <Td className="py-2 font-sans text-sm">{a.empresa || "—"}</Td>
                   <Td className="py-2">
-                    <div className="flex items-center gap-1">
+                    <div className="group/origen flex items-center gap-1">
                       <Copiable texto={a.origen} />
                       {admin && a.origen && (
                         <button
@@ -263,7 +261,7 @@ export default function Autenticaciones() {
                           onClick={() => setBorrador({ red: a.origen, nombre: a.origen_nombre, fija: true })}
                           aria-label={a.origen_nombre ? `Cambiar la descripción de ${a.origen}` : `Poner una descripción a ${a.origen}`}
                           title={a.origen_nombre ? "Cambiar la descripción" : "Poner una descripción a esta dirección"}
-                          className="rounded p-0.5 text-muted-foreground opacity-60 transition-opacity hover:text-foreground hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          className="rounded p-0.5 text-muted-foreground opacity-0 transition-opacity group-hover/origen:opacity-100 [@media(hover:none)]:opacity-60 hover:text-foreground hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         >
                           <Pencil className="size-3.5" aria-hidden="true" />
                         </button>
