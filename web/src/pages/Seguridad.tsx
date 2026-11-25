@@ -1,6 +1,6 @@
 import { Plus, UserCog } from "lucide-react";
 import * as React from "react";
-import { Ayuda, Badge, Button, Card, Copiable, Dialog, DialogContent, DialogFooter, EstadoVacio, Input, Label, MenuAcciones, Paginacion, Punto, Table, Td, Th, ThOrden, useOrden } from "@/components/ui";
+import { Ayuda, Badge, Button, Card, Copiable, Dialog, DialogContent, DialogFooter, EstadoVacio, Input, Label, ListaPestanas, MenuAcciones, Paginacion, PanelPestana, Pestana, Pestanas, Punto, Table, Td, Th, ThOrden, useOrden } from "@/components/ui";
 import { api, type Bloqueos as DatosBloqueos, type OperadorDetalle, type PaginaEventos, type Sesion } from "@/lib/api";
 import { ModalMiCuenta, nombreRol } from "@/components/MiCuenta";
 import { BotonVaciar } from "@/components/Vaciar";
@@ -597,6 +597,24 @@ function Actividad() {
 export default function Seguridad() {
   const { operador } = useApp();
   const admin = operador?.rol === "administrador";
+  // Cuatro bloques apilados hacían la página muy larga: van en pestañas, y la elegida
+  // se recuerda mientras dure la sesión del navegador.
+  const [pestana, setPestana] = React.useState<string>(() => {
+    try {
+      return sessionStorage.getItem("rc-seguridad:pestana") ?? "operadores";
+    } catch {
+      return "operadores";
+    }
+  });
+  const cambiarPestana = (v: string) => {
+    setPestana(v);
+    try {
+      sessionStorage.setItem("rc-seguridad:pestana", v);
+    } catch {
+      // Sin almacenamiento: vale hasta recargar.
+    }
+  };
+  const actual = !admin && (pestana === "bloqueos" || pestana === "actividad") ? "operadores" : pestana;
   return (
     <div className="space-y-4">
       <div>
@@ -607,10 +625,28 @@ export default function Seguridad() {
           </Ayuda>
         </p>
       </div>
-      {admin ? <Operadores /> : <TarjetaMiCuenta />}
-      <Sesiones />
-      {admin && <Bloqueos onCambio={0} />}
-      {admin && <Actividad />}
+      <Pestanas value={actual} onValueChange={cambiarPestana}>
+        <ListaPestanas>
+          <Pestana value="operadores">{admin ? "Operadores" : "Mi cuenta"}</Pestana>
+          <Pestana value="sesiones">Sesiones</Pestana>
+          {admin && <Pestana value="bloqueos">Bloqueos</Pestana>}
+          {admin && <Pestana value="actividad">Actividad</Pestana>}
+        </ListaPestanas>
+        <PanelPestana value="operadores">{admin ? <Operadores /> : <TarjetaMiCuenta />}</PanelPestana>
+        <PanelPestana value="sesiones">
+          <Sesiones />
+        </PanelPestana>
+        {admin && (
+          <PanelPestana value="bloqueos">
+            <Bloqueos onCambio={0} />
+          </PanelPestana>
+        )}
+        {admin && (
+          <PanelPestana value="actividad">
+            <Actividad />
+          </PanelPestana>
+        )}
+      </Pestanas>
     </div>
   );
 }
