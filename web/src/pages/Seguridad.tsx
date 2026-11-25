@@ -1,6 +1,6 @@
 import { Plus, UserCog } from "lucide-react";
 import * as React from "react";
-import { Badge, Button, Card, Copiable, Dialog, DialogContent, DialogFooter, EstadoVacio, Input, Label, Paginacion, Table, Td, Th, ThOrden, useOrden } from "@/components/ui";
+import { Badge, Button, Card, Copiable, Dialog, DialogContent, DialogFooter, EstadoVacio, Input, Label, MenuAcciones, Paginacion, Punto, Table, Td, Th, ThOrden, useOrden } from "@/components/ui";
 import { api, type Bloqueos as DatosBloqueos, type OperadorDetalle, type PaginaEventos, type Sesion } from "@/lib/api";
 import { ModalMiCuenta, nombreRol } from "@/components/MiCuenta";
 import { BotonVaciar } from "@/components/Vaciar";
@@ -196,10 +196,9 @@ function Operadores() {
                   </select>
                 </Td>
                 <Td>
-                  <div className="flex flex-wrap gap-1">
-                    <Badge variant={o.activo ? "success" : "muted"}>{o.activo ? "Activo" : "Suspendido"}</Badge>
-                    <Badge variant={o.totp ? "success" : "warning"}>{o.totp ? "Doble factor" : "Sin doble factor"}</Badge>
-                    {o.bloqueado && <Badge variant="destructive">Bloqueado</Badge>}
+                  <div className="flex flex-col gap-0.5">
+                    <Punto tono={o.bloqueado ? "destructive" : o.activo ? "success" : "muted"}>{o.bloqueado ? "Bloqueado" : o.activo ? "Activo" : "Suspendido"}</Punto>
+                    <span className={o.totp ? "text-xs text-muted-foreground" : "text-xs text-warning"}>{o.totp ? "Con doble factor" : "Sin doble factor"}</span>
                   </div>
                 </Td>
                 <Td className="whitespace-nowrap text-muted-foreground" valor={o.ultimo_acceso ?? ""}>
@@ -207,45 +206,22 @@ function Operadores() {
                   <div className="text-xs">{o.sesiones} sesión(es) abierta(s)</div>
                 </Td>
                 <Td>
-                  {/* Cada acción tiene su hueco, exista o no en esa fila: así todas
-                      quedan en la misma vertical. Primero las que hay siempre. */}
-                  <div className="mx-auto grid w-max grid-cols-[10.25rem_5.75rem_4.75rem_9.25rem_6.5rem] items-center gap-1 whitespace-nowrap">
+                  <div className="flex items-center justify-center gap-1 whitespace-nowrap">
                     {yo ? (
-                      <Button size="sm" className="justify-self-start" onClick={() => setMiCuenta(true)}>
+                      <Button size="sm" onClick={() => setMiCuenta(true)}>
                         <UserCog /> Mi cuenta
                       </Button>
                     ) : (
-                      <Button size="sm" variant="outline" onClick={() => restablecer(o)}>
-                        Restablecer contraseña
-                      </Button>
-                    )}
-                    {yo ? (
-                      <span />
-                    ) : (
-                      <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-foreground" onClick={() => hacer(() => api("PUT", `/operadores/${o.id}`, { rol: o.rol, activo: !o.activo }))}>
-                        {o.activo ? "Suspender" : "Activar"}
-                      </Button>
-                    )}
-                    {yo ? (
-                      <span />
-                    ) : (
-                      <Button size="sm" variant="ghost" className="text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => borrar(o)}>
-                        Eliminar
-                      </Button>
-                    )}
-                    {o.totp && !yo ? (
-                      <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-foreground" onClick={() => quitarTotp(o)}>
-                        Retirar doble factor
-                      </Button>
-                    ) : (
-                      <span />
-                    )}
-                    {o.bloqueado ? (
-                      <Button size="sm" variant="outline" onClick={() => hacer(() => api("POST", `/operadores/${o.id}/desbloquear`, {}))}>
-                        Desbloquear
-                      </Button>
-                    ) : (
-                      <span />
+                      <MenuAcciones
+                          etiqueta={`Más acciones de ${o.usuario}`}
+                          acciones={[
+                            ...(o.bloqueado ? [{ texto: "Desbloquear", onSelect: () => hacer(() => api("POST", `/operadores/${o.id}/desbloquear`, {})) }] : []),
+                            { texto: "Restablecer contraseña", onSelect: () => restablecer(o) },
+                            ...(o.totp ? [{ texto: "Retirar doble factor", onSelect: () => quitarTotp(o) }] : []),
+                            { texto: o.activo ? "Suspender" : "Activar", onSelect: () => hacer(() => api("PUT", `/operadores/${o.id}`, { rol: o.rol, activo: !o.activo })) },
+                            { texto: "Eliminar", onSelect: () => borrar(o), peligro: true, separadoAntes: true },
+                          ]}
+                        />
                     )}
                   </div>
                 </Td>

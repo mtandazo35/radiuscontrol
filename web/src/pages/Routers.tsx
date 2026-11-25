@@ -1,7 +1,7 @@
 import { Eye, EyeOff, Plus, Users } from "lucide-react";
 import * as React from "react";
 import { accesosDe, BloqueAccesos, CambiosMasivos, permisosDe, type Permisos } from "@/components/Accesos";
-import { Badge, Button, Card, Copiable, Dialog, DialogContent, DialogFooter, EstadoVacio, Input, Label, Select, Table, Td, Textarea, Th, ThOrden, comparar, useOrden } from "@/components/ui";
+import { Badge, Button, Card, Copiable, Dialog, DialogContent, DialogFooter, EstadoVacio, Input, Label, MenuAcciones, Punto, Select, Table, Td, Textarea, Th, ThOrden, comparar, useOrden } from "@/components/ui";
 import { api, type Empresa, type ModoAcceso, type RespuestaRouter, type Router, type Usuario } from "@/lib/api";
 import { fecha } from "@/lib/utils";
 import { useApp } from "../contexto";
@@ -38,7 +38,7 @@ const vacio: Formulario = {
 };
 
 function InsigniaAcceso({ r }: { r: Router }) {
-  if (r.acceso !== "restringido") return <Badge variant="muted">General</Badge>;
+  if (r.acceso !== "restringido") return <span className="text-sm text-muted-foreground">General</span>;
   const n = r.accesos?.length ?? 0;
   if (n === 0) return <Badge variant="warning">Restringido · nadie entra</Badge>;
   return (
@@ -397,17 +397,18 @@ export default function Routers() {
                   {r.descripcion && <div className="text-xs text-muted-foreground">{r.descripcion}</div>}
                 </Td>
                 <Td className="whitespace-nowrap">{r.empresa || <Badge variant="warning">Sin empresa</Badge>}</Td>
-                <Td className="font-mono text-xs">
-                  {r.redes.map((red) => (
-                    <div key={red}>
-                      <Copiable texto={red} />
-                    </div>
-                  ))}
+                <Td className="font-mono text-xs" valor={r.redes[0] ?? ""}>
+                  {r.redes.length > 0 && <Copiable texto={r.redes[0]} />}
+                  {r.redes.length > 1 && (
+                    <span className="ml-1.5 rounded bg-muted px-1.5 py-0.5 font-sans text-[11px] text-muted-foreground" title={r.redes.slice(1).join("\n")}>
+                      +{r.redes.length - 1}
+                    </span>
+                  )}
                 </Td>
                 <Td>
-                  <div className="flex flex-wrap gap-1">
-                    <Badge variant={r.activo ? "success" : "muted"}>{r.activo ? "Activo" : "Suspendido"}</Badge>
-                    {!r.exigir_message_authenticator && <Badge variant="warning">Sin Message-Authenticator</Badge>}
+                  <div className="flex flex-col gap-0.5">
+                    <Punto tono={r.activo ? "success" : "muted"}>{r.activo ? "Activo" : "Suspendido"}</Punto>
+                    {!r.exigir_message_authenticator && <Punto tono="warning" className="text-xs text-muted-foreground">Sin Message-Authenticator</Punto>}
                   </div>
                 </Td>
                 <Td>
@@ -437,15 +438,14 @@ export default function Routers() {
                     >
                       Editar
                     </Button>
-                    <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-foreground" onClick={() => rotar(r)}>
-                      Rotar secreto
-                    </Button>
-                    <Button size="sm" variant="ghost" className="w-[5.75rem] text-muted-foreground hover:text-foreground" onClick={() => alternar(r)}>
-                      {r.activo ? "Suspender" : "Activar"}
-                    </Button>
-                    <Button size="sm" variant="ghost" className="text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => borrar(r)}>
-                      Eliminar
-                    </Button>
+                    <MenuAcciones
+                      etiqueta={`Más acciones de ${r.nombre}`}
+                      acciones={[
+                        { texto: "Rotar secreto", onSelect: () => rotar(r) },
+                        { texto: r.activo ? "Suspender" : "Activar", onSelect: () => alternar(r) },
+                        { texto: "Eliminar", onSelect: () => borrar(r), peligro: true, separadoAntes: true },
+                      ]}
+                    />
                   </div>
                 </Td>
               </tr>

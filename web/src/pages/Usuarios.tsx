@@ -1,6 +1,6 @@
 import { Eye, EyeOff, Plus } from "lucide-react";
 import * as React from "react";
-import { Badge, Button, Card, Copiable, Dialog, DialogContent, DialogFooter, EstadoVacio, Input, Label, Select, Table, Td, Th, ThOrden, comparar, useOrden } from "@/components/ui";
+import { Button, Card, Copiable, Dialog, DialogContent, DialogFooter, EstadoVacio, Input, Label, MenuAcciones, Punto, Select, Table, Td, Th, ThOrden, comparar, useOrden } from "@/components/ui";
 import { api, type RespuestaUsuario, type Usuario } from "@/lib/api";
 import { fecha } from "@/lib/utils";
 import { useApp } from "../contexto";
@@ -361,7 +361,7 @@ export default function Usuarios() {
                 </Td>
                 <Td className="font-mono text-xs">{u.grupo}</Td>
                 <Td>
-                  <Badge variant={u.activo ? "success" : "muted"}>{u.activo ? "Activo" : "Suspendido"}</Badge>
+                  <Punto tono={u.activo ? "success" : "muted"}>{u.activo ? "Activo" : "Suspendido"}</Punto>
                 </Td>
                 <Td className="whitespace-nowrap text-muted-foreground" valor={u.clave_cambiada ?? ""}>{fecha(u.clave_cambiada)}</Td>
                 <Td>
@@ -373,15 +373,14 @@ export default function Usuarios() {
                     >
                       Editar
                     </Button>
-                    <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-foreground" onClick={() => setCambio({ usuario: u, clave: "" })}>
-                      Restablecer contraseña
-                    </Button>
-                    <Button size="sm" variant="ghost" className="w-[5.75rem] text-muted-foreground hover:text-foreground" onClick={() => alternar(u)}>
-                      {u.activo ? "Suspender" : "Activar"}
-                    </Button>
-                    <Button size="sm" variant="ghost" className="text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => borrar(u)}>
-                      Eliminar
-                    </Button>
+                    <MenuAcciones
+                      etiqueta={`Más acciones de ${u.usuario}`}
+                      acciones={[
+                        { texto: "Restablecer contraseña", onSelect: () => setCambio({ usuario: u, clave: "" }) },
+                        { texto: u.activo ? "Suspender" : "Activar", onSelect: () => alternar(u) },
+                        { texto: "Eliminar", onSelect: () => borrar(u), peligro: true, separadoAntes: true },
+                      ]}
+                    />
                   </div>
                 </Td>
               </tr>
