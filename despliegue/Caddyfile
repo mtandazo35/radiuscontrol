@@ -51,9 +51,12 @@
 		# así una actualización se ve sin recargar a mano. Los archivos de
 		# /assets llevan una huella en el nombre que cambia con cada versión: se
 		# guardan un año sin volver a preguntar.
-		header Cache-Control "no-cache"
+		# Las dos reglas no se solapan: Caddy ordena las cabeceras y la general
+		# pisaría a la de /assets.
 		@versionados path /assets/*
+		@sin_version not path /assets/*
 		header @versionados Cache-Control "public, max-age=31536000, immutable"
+		header @sin_version Cache-Control "no-cache"
 		root * /srv
 		try_files {path} /index.html
 		file_server
