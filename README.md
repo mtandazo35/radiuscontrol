@@ -28,11 +28,21 @@ icono (un escudo con cerradura, RiShieldKeyholeFill de react-icons) sale en la p
 navegador y al guardarlo en la pantalla de inicio del móvil. Las ventanas tienen el ancho
 justo para lo que llevan: estrechas para avisos y formularios de uno o dos campos, medianas
 para los formularios normales y anchas solo para los de dos columnas (Router y Cambios
-masivos); en el teléfono ocupan el ancho de la pantalla. En la barra superior hay un filtro por router, que afecta a Inicio, Routers y
-Autenticaciones, y un botón para volver a pedir los datos.
+masivos); en el teléfono ocupan el ancho de la pantalla. En la barra superior hay un filtro
+por router, que afecta a Inicio, Routers y Autenticaciones, y un botón para volver a pedir
+los datos.
+
+Las pantallas van al grano: cada una abre con una línea que dice qué es, y la explicación
+completa está en el icono «?» que hay al lado (también junto al título de cada bloque de
+Seguridad). Los estados se marcan con un punto de color (verde activo, gris suspendido,
+rojo bloqueado o rechazado) en lugar de etiquetas repetidas en cada fila.
 
 En todas las tablas:
 
+- **Acciones de cada fila**: un botón con la acción principal (Editar) y el resto en el menú
+  «⋯» (rotar secreto, restablecer contraseña, suspender o activar, desbloquear, eliminar).
+  Eliminar va en rojo y separado, y siempre pide confirmación. El menú también se abre con
+  el teclado.
 - **Mover columnas**: arrastra un encabezado y suéltalo donde quieras la columna (con el
   teclado, Alt + flecha izquierda o derecha sobre el encabezado).
 - **Ordenar**: pulsa un encabezado para ordenar por esa columna; otra pulsación invierte
@@ -54,7 +64,8 @@ En todas las tablas:
 - Gráfico de logins aceptados y rechazados de la última hora, de las últimas 12 o de las
   últimas 24: un pico de rechazos delata a alguien o algo reintentando.
 - Los últimos intentos, quién entra más, a quién se rechaza más, desde qué dirección y por
-  qué motivo. Si la dirección tiene una descripción puesta, se muestra junto a ella.
+  qué motivo. Si la dirección tiene una descripción puesta, se muestra junto a ella. Si no
+  hubo ningún rechazo en 24 horas, esas tres listas vacías se juntan en un solo aviso verde.
 - Una tabla por router con sus redes, sus logins del día y el último login aceptado.
 
 ### Routers
@@ -122,12 +133,16 @@ En todas las tablas:
 
 ### Configuración
 
+Organizada en pestañas, que se recuerdan mientras dure la sesión: **Estado** (para todos),
+y **Accesos**, **Mantenimiento** y **Migración** (solo administradores).
+
 - **Accesos al servidor**: quién puede llegar a la web del panel (443) y al SSH, gestionado
   de forma gráfica. Las reglas cargadas a mano en el servidor se muestran y no se tocan.
 - **Orígenes con nombre**: la lista de direcciones y redes con su descripción. Si una
   dirección cae en varias redes, vale la descripción de la más pequeña.
 - **Estado**: lo guardado en el panel, lo aplicado, lo que FreeRADIUS tiene cargado y lo
-  que el firewall deja pasar, con sus huellas para comprobar que coinciden.
+  que el firewall deja pasar, con sus huellas para comprobar que coinciden. Las redes que
+  el firewall deja pasar se despliegan al pulsar su número.
 - **Limpieza de registros**: conservación configurable, limpieza programada, limpieza de
   emergencia por disco lleno y vaciado a petición.
 - **Migrar a otro servidor**: «Descargar base de datos» baja un archivo cifrado con toda la
@@ -158,6 +173,7 @@ En todas las tablas:
 - Sesiones abiertas a la vista, con cierre individual o de todas las demás. Una sesión se
   cierra sola tras 30 minutos sin actividad.
 - Registro de actividad: accesos, intentos fallidos y cada cambio, con quién y desde dónde.
+  El detalle de cada evento se lee en frases («Sin doble factor», «De 5780920 a 21d06a5»).
 
 ## Cómo se guardan las credenciales
 
