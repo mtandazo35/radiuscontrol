@@ -225,6 +225,36 @@ cd /root/radiuscontrol/despliegue
 RED_GESTION=192.0.2.0/24 ./instalar.sh
 ```
 
+### Publicar el panel con un dominio, detrás de un proxy
+
+El panel se puede publicar con un dominio propio y un certificado válido detrás de un proxy
+inverso: Nginx Proxy Manager, Caddy, Traefik o cualquier otro. No hay que configurar nada en
+RadiusControl.
+
+1. En el proxy, apunta el dominio a `https://<IP del servidor>:443`. El certificado del
+   servidor es interno, así que el proxy no debe verificarlo (en Nginx Proxy Manager es lo
+   normal).
+2. Abre el 443 del servidor a la dirección del proxy, en Configuración → Accesos al servidor.
+3. Entra por el dominio.
+
+El panel responde por cualquier nombre: puedes cambiar de dominio o de proxy sin tocar el
+servidor. Si el proxy se conecta pidiendo un nombre concreto, el servidor le emite al
+momento un certificado interno para ese nombre.
+
+**La dirección de quien entra.** El proxy le pasa al panel la IP real de cada persona, que
+es la que aparece en la actividad y la que cuenta para el bloqueo por intentos fallidos. Se
+toma primero de `X-Real-IP`, que el proxy escribe con la dirección que ve. Un cliente no
+puede añadirla a través del proxy, así que tampoco puede hacerse pasar por otra IP. Sin
+esta cabecera, todos los que entraran por el proxy compartirían su IP, y cuatro intentos
+fallidos de cualquiera bloquearían a todos.
+
+Por omisión, esa cabecera se acepta venga de donde venga, para que funcione con cualquier
+proxy. Quien llegue directo al 443 podría escribirla a mano y aparecer con otra IP. El
+bloqueo por cuenta sigue protegiendo igual, y por eso el 443 debe seguir abierto solo a
+las redes que lo necesitan. Para aceptarla solo de proxies concretos, añade al `.env` del
+servidor `PROXIES_CONFIABLES=192.0.2.10/32` (varias redes, separadas por espacios) y
+reinicia el contenedor web: `docker compose up -d web`.
+
 ## Conectar un router MikroTik
 
 1. En el panel, crea el router con su dirección o red de origen y su empresa.

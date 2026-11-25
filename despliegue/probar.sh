@@ -1384,6 +1384,29 @@ comprobar "Migración: la descarga queda en la actividad y no deja el volcado en
 find "$MIG_DIR" -type f -exec shred -u {} +
 rm -rf "$MIG_DIR"
 
+# ---------------------------------------------------------------- detrás de un proxy
+# El panel responde por cualquier nombre (un proxy como NPM lo reenvía con el
+# dominio del cliente) y la IP que ve la API es la que pone el proxy en
+# X-Real-IP, no la que un cliente escriba en X-Forwarded-For.
+PANEL="https://$IP_PUBLICA"
+POR_IP="$(curl -sk -m 10 "$PANEL/" | sha256sum)"
+POR_NOMBRE="$(curl -sk -m 10 -H 'Host: panel-de-prueba.example.com' "$PANEL/" | sha256sum)"
+comprobar "Proxy: con cualquier nombre en Host se sirve el mismo panel que por la IP" \
+    "$([ "$POR_IP" = "$POR_NOMBRE" ] && [ -n "$(curl -sk -m 10 -H 'Host: panel-de-prueba.example.com' "$PANEL/" | grep -o '<div id="root">')" ]; echo $?)"
+comprobar "Proxy: si la conexión pide un nombre cualquiera (SNI), también responde" \
+    "$([ "$(curl -sk -m 10 -o /dev/null -w '%{http_code}' --resolve "panel-de-prueba.example.com:443:$IP_PUBLICA" https://panel-de-prueba.example.com/)" = 200 ]; echo $?)"
+IP_PROXY_REAL="192.0.2.202"
+IP_PROXY_FALSA="198.51.100.202"
+curl -sk -m 10 -o /dev/null -X POST "$PANEL/api/sesion" -H 'X-RC: 1' -H 'Content-Type: application/json' \
+    -H 'Host: panel-de-prueba.example.com' -H "X-Real-IP: $IP_PROXY_REAL" -H "X-Forwarded-For: $IP_PROXY_FALSA, $IP_PROXY_REAL" \
+    --data '{"usuario":"prueba-proxy-inexistente","clave":"no-es-la-clave-0000"}'
+comprobar "Proxy: la API anota la IP que pone el proxy y no la que el cliente escribe en X-Forwarded-For" \
+    "$([ "$(sql "SELECT count(*) FROM intentos_ip WHERE ip = '$IP_PROXY_REAL'")" -ge 1 ] \
+        && [ "$(sql "SELECT count(*) FROM intentos_ip WHERE ip = '$IP_PROXY_FALSA'")" = 0 ]; echo $?)" \
+    "$(sql "SELECT string_agg(DISTINCT ip, ' ') FROM intentos_ip WHERE fecha > now() - interval '1 minute'")"
+docker exec radiuscontrol-api radiuscontrol desbloquear-ip "$IP_PROXY_REAL" >/dev/null
+docker exec radiuscontrol-api radiuscontrol desbloquear-ip "$IP_PROXY_FALSA" >/dev/null
+
 api GET "/api/auditoria?tamano=5&pagina=1"
 P1="$CUERPO"
 api GET "/api/auditoria?tamano=5&pagina=2"

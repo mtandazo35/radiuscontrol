@@ -1,10 +1,28 @@
 {
 	admin off
 	auto_https disable_redirects
+
+	# Certificados internos al vuelo para cualquier nombre (ver el bloque
+	# https:// del final). Caddy exige que algo autorice cada emisión: lo hace
+	# el pequeño servidor local del final, que siempre dice que sí. Solo
+	# escucha en 127.0.0.1.
+	on_demand_tls {
+		ask http://127.0.0.1:5556/
+	}
+
+	# IP del cliente cuando el panel está detrás de un proxy (NPM, Caddy,
+	# Traefik...). Por defecto se acepta de cualquier origen, para que funcione
+	# con cualquier proxy sin configurarlo. Se toma primero X-Real-IP, que el
+	# proxy pone con la dirección que ve y que un cliente no puede añadir a
+	# través de él. Para aceptarla solo de proxies concretos, PROXIES_CONFIABLES
+	# en el .env (redes separadas por espacios).
+	servers {
+		trusted_proxies static {$PROXIES_CONFIABLES:0.0.0.0/0 ::/0}
+		client_ip_headers X-Real-IP X-Forwarded-For
+	}
 }
 
-{$SITIO} {
-	tls internal
+(panel) {
 	encode gzip
 
 	header {
@@ -20,7 +38,11 @@
 	}
 
 	handle /api/* {
-		reverse_proxy 127.0.0.1:8080
+		# La API toma la IP del cliente de esta cabecera: una sola dirección,
+		# la que Caddy calculó arriba, nunca la lista que mande el navegador.
+		reverse_proxy 127.0.0.1:8080 {
+			header_up X-Forwarded-For {client_ip}
+		}
 	}
 
 	handle {
@@ -28,4 +50,26 @@
 		try_files {path} /index.html
 		file_server
 	}
+}
+
+# Dirección propia del servidor, con su certificado interno de siempre. Sirve
+# también a los proxies que se conectan por IP sin indicar nombre (lo normal).
+{$SITIO} {
+	tls internal
+	import panel
+}
+
+# Cualquier otro nombre: el panel responde igual, se llegue por el dominio que
+# se llegue o por el proxy que sea. Si la conexión pide un nombre concreto, se
+# le emite al momento un certificado interno para él.
+https:// {
+	tls internal {
+		on_demand
+	}
+	import panel
+}
+
+http://127.0.0.1:5556 {
+	bind 127.0.0.1
+	respond 200
 }
