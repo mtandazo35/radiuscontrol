@@ -1,7 +1,7 @@
-import { KeyRound, Router as IconoRouter, ShieldAlert, Users } from "lucide-react";
+import { KeyRound, Router as IconoRouter, ShieldAlert, ShieldCheck, Users } from "lucide-react";
 import * as React from "react";
 import { Link } from "react-router-dom";
-import { Badge, Card, EstadoVacio, Table, Td, Th } from "@/components/ui";
+import { Card, EstadoVacio, Punto, Table, Td, Th } from "@/components/ui";
 import { api } from "@/lib/api";
 import { cn, fecha, motivoLegible } from "@/lib/utils";
 import { AvisoDescartes } from "@/components/AvisoDescartes";
@@ -104,20 +104,27 @@ function Indicador({
     fallo: "bg-destructive/10 text-destructive",
     aviso: "bg-warning/10 text-warning",
   }[tono];
+  const brillo = {
+    primario: "bg-primary",
+    ok: "bg-success",
+    fallo: "bg-destructive",
+    aviso: "bg-warning",
+  }[tono];
   return (
-    <Card className="flex flex-col justify-between p-4">
-      <div className="flex items-center justify-between gap-2">
+    <Card className="relative flex flex-col justify-between overflow-hidden p-4">
+      <span aria-hidden="true" className={cn("pointer-events-none absolute -right-8 -top-10 size-28 rounded-full opacity-[0.12] blur-2xl", brillo)} />
+      <div className="relative flex items-center justify-between gap-2">
         <span className="text-xs font-medium text-muted-foreground">{titulo}</span>
-        <span className={cn("rounded p-1.5", fondo)}>
-          <Icono className="size-4" />
+        <span className={cn("rounded-lg p-2", fondo)}>
+          <Icono className="size-5" />
         </span>
       </div>
-      <div className="my-2 flex items-baseline justify-between gap-2">
-        <span className="font-mono text-2xl font-semibold">{valor}</span>
+      <div className="relative my-2 flex items-baseline justify-between gap-2">
+        <span className="font-mono text-3xl font-semibold tabular-nums">{valor}</span>
         {aparte && <span className="font-mono text-xs">{aparte}</span>}
       </div>
       {children}
-      <div className="flex items-center justify-between gap-2 border-t pt-2 text-[11px] text-muted-foreground">
+      <div className="relative flex items-center justify-between gap-2 border-t pt-2 text-[11px] text-muted-foreground">
         {pie.map(([etiqueta, dato]) => (
           <span key={etiqueta}>
             {etiqueta}: <strong className="font-mono font-semibold text-foreground">{dato}</strong>
@@ -184,8 +191,8 @@ function Grafico({ datos }: { datos: Resumen }) {
                   <title>{titulo}</title>
                   {/* Zona completa: resalta la columna y da la ayuda también sobre un tramo vacío. */}
                   <rect x={i * hueco} y={0} width={hueco} height={alto} className="fill-transparent group-hover:fill-muted" />
-                  {hA > 0 && <rect x={x} y={alto - hA} width={grosor} height={hA} className="fill-success" />}
-                  {hR > 0 && <rect x={x} y={alto - hA - hR} width={grosor} height={hR} className="fill-destructive" />}
+                  {hA > 0 && <rect x={x} y={alto - hA} width={grosor} height={hA} className="fill-success/80 group-hover:fill-success" />}
+                  {hR > 0 && <rect x={x} y={alto - hA - hR} width={grosor} height={hR} className="fill-destructive/85 group-hover:fill-destructive" />}
                 </g>
               );
             })}
@@ -446,32 +453,45 @@ export default function Inicio() {
           vacio="Nadie entró en las últimas 24 horas."
           filas={datos.activos.map((x) => ({ nombre: x.nombre || "(sin usuario)", total: x.total, detalle: `Último: ${hace(x.ultimo, datos.ahora)}` }))}
         />
-        <Lista
-          titulo="A quién se rechaza más"
-          ayuda="Rechazos por usuario, 24 h"
-          tono="fallo"
-          vacio="Nadie fue rechazado en las últimas 24 horas."
-          filas={datos.rechazados.map((x) => ({ nombre: x.usuario || "(sin usuario)", total: x.rechazados, detalle: `Último: ${hace(x.ultimo, datos.ahora)}` }))}
-        />
-        <Lista
-          titulo="Desde dónde se rechaza"
-          ayuda="Rechazos por dirección de quien intenta, 24 h"
-          tono="fallo"
-          vacio="Sin rechazos en las últimas 24 horas."
-          filas={datos.origenes.map((x) => ({
-            nombre: x.nombre || "Sin dirección de origen",
-            total: x.total,
-            detalle: `${x.descripcion ? `${x.descripcion}. ` : ""}Último: ${hace(x.ultimo, datos.ahora)}`,
-          }))}
-        />
-        <Lista
-          titulo="Por qué se rechaza"
-          ayuda="Motivo que da FreeRADIUS, 24 h"
-          tono="fallo"
-          mono={false}
-          vacio="Sin rechazos en las últimas 24 horas."
-          filas={motivos}
-        />
+        {datos.rechazados.length === 0 && datos.origenes.length === 0 && motivos.length === 0 ? (
+          <Card className="relative flex min-h-[165px] items-center gap-4 overflow-hidden p-5 xl:col-span-3">
+            <span aria-hidden="true" className="pointer-events-none absolute -left-10 -top-10 size-40 rounded-full bg-success opacity-[0.08] blur-3xl" />
+            <span className="relative rounded-xl bg-success/10 p-3 text-success"><ShieldCheck className="size-7" /></span>
+            <div className="relative">
+              <h2 className="text-base font-semibold">Sin rechazos en las últimas 24 horas</h2>
+              <p className="text-sm text-muted-foreground">Todos los intentos de login a los routers se aceptaron. Si aparece alguno, aquí verás a quién, desde dónde y por qué.</p>
+            </div>
+          </Card>
+        ) : (
+          <>
+            <Lista
+              titulo="A quién se rechaza más"
+              ayuda="Rechazos por usuario, 24 h"
+              tono="fallo"
+              vacio="Nadie fue rechazado en las últimas 24 horas."
+              filas={datos.rechazados.map((x) => ({ nombre: x.usuario || "(sin usuario)", total: x.rechazados, detalle: `Último: ${hace(x.ultimo, datos.ahora)}` }))}
+            />
+            <Lista
+              titulo="Desde dónde se rechaza"
+              ayuda="Rechazos por dirección de quien intenta, 24 h"
+              tono="fallo"
+              vacio="Sin rechazos en las últimas 24 horas."
+              filas={datos.origenes.map((x) => ({
+                nombre: x.nombre || "Sin dirección de origen",
+                total: x.total,
+                detalle: `${x.descripcion ? `${x.descripcion}. ` : ""}Último: ${hace(x.ultimo, datos.ahora)}`,
+              }))}
+            />
+            <Lista
+              titulo="Por qué se rechaza"
+              ayuda="Motivo que da FreeRADIUS, 24 h"
+              tono="fallo"
+              mono={false}
+              vacio="Sin rechazos en las últimas 24 horas."
+              filas={motivos}
+            />
+          </>
+        )}
       </div>
 
       <Card>
@@ -506,7 +526,7 @@ export default function Inicio() {
                   <div className="font-medium">{r.nombre}</div>
                   {r.empresa && <div className="text-xs text-muted-foreground">{r.empresa}</div>}
                 </Td>
-                <Td>{r.activo ? <Badge variant="success">Activo</Badge> : <Badge variant="muted">Suspendido</Badge>}</Td>
+                <Td><Punto tono={r.activo ? "success" : "muted"}>{r.activo ? "Activo" : "Suspendido"}</Punto></Td>
                 <Td className="text-right font-mono" valor={r.redes}>{r.redes}</Td>
                 <Td className="text-right font-mono" valor={r.aceptados}>{miles.format(r.aceptados)}</Td>
                 <Td className={cn("text-right font-mono", r.rechazados > 0 && "font-semibold text-destructive")} valor={r.rechazados}>{miles.format(r.rechazados)}</Td>
